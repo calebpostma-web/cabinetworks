@@ -152,7 +152,7 @@ const Badge = ({ children, color="amber" }) => {
 
 /* ─── API ─────────────────────────────────────────────────────────────────── */
 async function callClaude(messages, max_tokens=1800) {
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+  const r = await fetch("/ai-proxy", {
     method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify({ model:MODEL, max_tokens, messages }),
   });
