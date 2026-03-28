@@ -445,9 +445,8 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features}){
   const wallCabs=cabs.filter(c=>c.wall===wall);
   const wallFeatures=(features||[]).filter(f=>f.wall===wall);
 
-  // only warn on lower cabs — upper cabs at different height, not a real conflict
+  // check if cabinet overlaps any feature
   const hasOverlap=c=>{
-    if(DEFS[c.type]?.row!=="lower") return false;
     return wallFeatures.some(f=>{
       const cabEnd=c.x+c.w, featEnd=f.x+f.width;
       return c.x<featEnd&&cabEnd>f.x;
@@ -511,8 +510,7 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features}){
         const isSel=c.id===sel, isLower=DEFS[c.type]?.row==="lower", isOverlap=hasOverlap(c);
         const cx=PL+c.x*ES, cyy=getCabY(c), cw=c.w*ES, ch=c.h*ES;
         const tkH=isLower?TOEKICK*ES:0, bodyH=ch-tkH, nD=cw>=27*ES?2:1, dw=cw/nD;
-        // appliance visuals only make sense on lower / base cabinets
-        const isSink=isLower&&notesHas(c,"sink"), isRange=isLower&&(notesHas(c,"range")||notesHas(c,"stove")), isFridge=isLower&&(notesHas(c,"fridge")||notesHas(c,"refrigerator"));
+        const isSink=notesHas(c,"sink"), isRange=notesHas(c,"range")||notesHas(c,"stove"), isFridge=notesHas(c,"fridge")||notesHas(c,"refrigerator");
         return(
           <g key={c.id} style={{cursor:"grab"}} onPointerDown={e=>onPD(e,c.id)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
             <rect x={cx} y={cyy} width={cw} height={bodyH}
@@ -529,18 +527,15 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features}){
               </g>
             )}
 
-            {/* Range/stove visual — 4 burner circles, fixed size */}
+            {/* Range/stove visual — 4 burner circles */}
             {isRange&&(
               <g>
-                {(()=>{
-                  const br=6, gap=Math.min(cw*0.22, 16);
-                  return [[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=>(
-                    <g key={i}>
-                      <circle cx={cx+cw/2+ox*gap} cy={cyy+bodyH/2+oy*gap} r={br} fill="none" stroke="#8A7060" strokeWidth={1.5}/>
-                      <circle cx={cx+cw/2+ox*gap} cy={cyy+bodyH/2+oy*gap} r={br*0.35} fill="#A88070"/>
-                    </g>
-                  ));
-                })()}
+                {[[-0.22,-0.18],[0.22,-0.18],[-0.22,0.18],[0.22,0.18]].map(([ox,oy],i)=>(
+                  <g key={i}>
+                    <circle cx={cx+cw/2+ox*cw} cy={cyy+bodyH/2+oy*bodyH} r={cw*0.1} fill="none" stroke="#8A7060" strokeWidth={1.5}/>
+                    <circle cx={cx+cw/2+ox*cw} cy={cyy+bodyH/2+oy*bodyH} r={cw*0.04} fill="#A88070"/>
+                  </g>
+                ))}
               </g>
             )}
 
@@ -649,25 +644,13 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland}){
       {cabs.map(c=>{
         const r=getRect(c);if(!r)return null;
         const isSel=c.id===sel,isUpper=DEFS[c.type]?.row==="upper",isIsland=c.wall==="Island";
-        const isLowerCab=!isUpper;
-        const isSink=isLowerCab&&notesHas(c,"sink"),isRange=isLowerCab&&(notesHas(c,"range")||notesHas(c,"stove")),isFridge=isLowerCab&&(notesHas(c,"fridge")||notesHas(c,"refrigerator"));
+        const isSink=notesHas(c,"sink"),isRange=notesHas(c,"range")||notesHas(c,"stove"),isFridge=notesHas(c,"fridge")||notesHas(c,"refrigerator");
         const fill=isIsland?"#C4A870":isUpper?"#D4CCBC":isFridge?"#C8BEB0":isRange?"#C4A888":"#C8B898";
-        // label: appliance name or width
-        const lbl=isSink?"SINK":isRange?"RANGE":isFridge?"FRIDGE":`${c.w}"`;
-        const lblColor=isSink?"#5A8898":isRange?"#7A5030":isFridge?"#607888":isSel?T.amber:T.muted;
         return(
           <g key={c.id} style={{cursor:isIsland?"grab":"pointer"}} onPointerDown={e=>onPD(e,c)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
             <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} stroke={isSel?T.amber:T.borderDark} strokeWidth={isSel?2:1} strokeDasharray={isUpper?"3,2":"none"} rx={2}/>
-            {/* Sink: small basin rectangle */}
-            {isSink&&r.w>20&&r.h>14&&<rect x={r.x+r.w*0.2} y={r.y+r.h*0.2} width={r.w*0.6} height={r.h*0.55} fill="#8AAABB" stroke="#6A8898" strokeWidth={1} rx={2}/>}
-            {/* Range: 4 small burner dots */}
-            {isRange&&r.w>20&&r.h>14&&[[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=>(
-              <circle key={i} cx={r.x+r.w/2+ox*Math.min(r.w*0.18,6)} cy={r.y+r.h/2+oy*Math.min(r.h*0.22,6)} r={Math.min(r.w,r.h)*0.09} fill="none" stroke="#8A7060" strokeWidth={1}/>
-            ))}
-            {/* Fridge: thin handle line */}
-            {isFridge&&r.w>10&&<line x1={r.x+r.w*0.75} y1={r.y+r.h*0.25} x2={r.x+r.w*0.75} y2={r.y+r.h*0.75} stroke="#9A8878" strokeWidth={2} strokeLinecap="round"/>}
-            <text x={r.x+r.w/2} y={r.y+r.h/2+(isSink||isRange||isFridge?r.h*0.42:4)} textAnchor="middle" fill={lblColor} fontSize={9} fontFamily="DM Sans" fontWeight={600}>{lbl}</text>
-            {isIsland&&<text x={r.x+r.w/2} y={r.y+r.h/2+14} textAnchor="middle" fill={T.faint} fontSize={8} fontFamily="DM Sans">drag</text>}
+            <text x={r.x+r.w/2} y={r.y+r.h/2+4} textAnchor="middle" fill={isSel?T.amber:T.muted} fontSize={10} fontFamily="DM Sans">{isSink?"🪣":isRange?"🔥":isFridge?"❄":c.w+`"`}</text>
+            {isIsland&&<text x={r.x+r.w/2} y={r.y+r.h/2+15} textAnchor="middle" fill={T.faint} fontSize={9} fontFamily="DM Sans">drag to move</text>}
           </g>
         );
       })}
@@ -932,10 +915,6 @@ export default function App(){
   const [cabs,setCabs]=useState([]);
   const [sel,setSel]=useState(null);
   const [wall,setWall]=useState("South");
-  const [zoom,setZoom]=useState(1);
-  const zoomIn=()=>setZoom(z=>Math.min(2,+(z+0.2).toFixed(1)));
-  const zoomOut=()=>setZoom(z=>Math.max(0.4,+(z-0.2).toFixed(1)));
-  const zoomReset=()=>setZoom(1);
 
   const ww=wallWidth(wall,room);
 
@@ -995,12 +974,6 @@ export default function App(){
                 <button key={v} onClick={()=>setSubView(v)} style={{padding:"0 16px",background:"none",border:"none",borderBottom:`3px solid ${subView===v?T.amber:"transparent"}`,color:subView===v?T.amber:T.muted,fontSize:13,fontWeight:subView===v?600:400,cursor:"pointer",transition:"all 0.15s"}}>{l}</button>
               ))}
               <div style={{flex:1}}/>
-              {/* Zoom controls */}
-              <div style={{display:"flex",alignItems:"center",gap:4,marginRight:16}}>
-                <button onClick={zoomOut} style={{width:28,height:28,background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.muted}}>−</button>
-                <button onClick={zoomReset} style={{minWidth:46,height:28,background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:T.muted,fontFamily:"monospace"}}>{Math.round(zoom*100)}%</button>
-                <button onClick={zoomIn}  style={{width:28,height:28,background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.muted}}>+</button>
-              </div>
               <div style={{display:"flex",alignItems:"center",fontSize:13,color:T.faint}}>
                 {cabs.length} cabinet{cabs.length!==1?"s":""}
                 {(room.features||[]).length>0&&<span style={{marginLeft:8,color:T.winStroke}}>{(room.features||[]).length} feature{(room.features||[]).length!==1?"s":""}</span>}
@@ -1008,12 +981,10 @@ export default function App(){
               </div>
             </div>
             <div style={{flex:1,overflow:"auto",padding:28}}>
-              <div style={{transform:`scale(${zoom})`,transformOrigin:"top left",display:"inline-block"}}>
-                {subView==="elevation"
-                  ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]}/>
-                  :<FloorPlanCanvas cabs={cabs} room={room} sel={sel} onSel={setSel} onMoveIsland={moveIsland}/>
-                }
-              </div>
+              {subView==="elevation"
+                ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]}/>
+                :<FloorPlanCanvas cabs={cabs} room={room} sel={sel} onSel={setSel} onMoveIsland={moveIsland}/>
+              }
             </div>
           </div>
           <PropertiesPanel c={selCab} update={updateCab} del={deleteCab} activeWalls={[...activeWalls,"Island"]}/>
