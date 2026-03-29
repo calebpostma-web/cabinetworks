@@ -27,14 +27,391 @@ const DEFS={
 const MATS={thermofoil:{label:"Thermofoil",rate:16},painted_mdf:{label:"Painted MDF",rate:22},maple:{label:"Maple",rate:40},cherry:{label:"Cherry",rate:56},walnut:{label:"Walnut",rate:70}};
 const BASE_P={base:175,upper:140,tall:310,island:395,vanity:190};
 const DOOR_STYLES=["Shaker","Flat Panel","Raised Panel","Beadboard","Glass Insert","Open Shelf"];
+const BOX_MATS={melamine_white:{label:"White Melamine"},melamine_maple:{label:"Maple Melamine"},melamine_black:{label:"Black Melamine"},birch_ply:{label:"Birch Plywood"},particle:{label:"Particle Board"}};
+const APPLIANCE_TYPES=[
+  {key:"fridge",label:"Refrigerator",defW:36,defH:70,defD:30},
+  {key:"range",label:"Range / Stove",defW:30,defH:36,defD:25},
+  {key:"dishwasher",label:"Dishwasher",defW:24,defH:34,defD:24},
+  {key:"microwave",label:"Microwave / OTR",defW:30,defH:17,defD:15},
+  {key:"rangeHood",label:"Range Hood",defW:30,defH:6,defD:20},
+  {key:"sink",label:"Sink",defW:33,defH:10,defD:22},
+];
+const UTILITY_TYPES=[
+  {key:"water",label:"Water supply",icon:"💧"},
+  {key:"drain",label:"Drain",icon:"⬇"},
+  {key:"gas",label:"Gas line",icon:"🔥"},
+  {key:"electrical",label:"Electrical / outlet",icon:"⚡"},
+];
 
 let _uid=1;
 const uid=()=>`c${_uid++}`;
 const fid=()=>`f${_uid++}`;
+const aid=()=>`a${_uid++}`;
+const utid=()=>`u${_uid++}`;
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const getPrice=c=>Math.round(BASE_P[c.type]+(c.w*c.h/144)*(MATS[c.material]?.rate??40));
 const notesHas=(c,kw)=>c.notes?.toLowerCase().includes(kw);
 const wallWidth=(wall,room)=>["East","West"].includes(wall)?room.depth:room.width;
+
+/* ─── LAYOUT ENGINE ───────────────────────────────────────────────────────── */
+// Deterministic cabinet placement — AI picks design decisions, this does the math.
+const FILL_W=[36,33,30,27,24,21,18,15,12,9]; // standard base widths, largest first
+const MIN_CAB=9;
+
+const LE={
+  // Doors block lower cabs; windows are fine below counter height
+  lowerObstacles(wall,features){
+    return(features||[]).filter(f=>f.wall===wall&&f.type==="door")
+      .map(f=>({x:Math.max(0,f.x-2),w:f.width+4}));
+  },
+  // Windows + doors + range hood block upper cabs
+  upperObstacles(wall,features,rangeZone){
+    const obs=(features||[]).filter(f=>f.wall===wall)
+      .map(f=>({x:Math.max(0,f.x-2),w:f.width+4}));
+    if(rangeZone) obs.push(rangeZone);
+    return obs;
+  },
+
+  // First window on a wall
+  firstWindow(wall,features){
+    return(features||[]).find(f=>f.wall===wall&&f.type==="window");
+  },
+
+  // Find utility location
+  utilityAt(wall,type,utilities){
+    return(utilities||[]).find(u=>u.wall===wall&&u.type===type);
+  },
+
+  // Check overlap
+  overlaps(x,w,zones){
+    return zones.some(z=>x<z.x+z.w&&x+w>z.x);
+  },
+
+  // Nudge position to avoid zones — try ±1..30"
+  nudge(x,w,wallW,zones){
+    if(!LE.overlaps(x,w,zones)) return x;
+    for(let d=1;d<=30;d++){
+      if(x-d>=0&&!LE.overlaps(x-d,w,zones)) return x-d;
+      if(x+d+w<=wallW&&!LE.overlaps(x+d,w,zones)) return x+d;
+    }
+    return x;
+  },
+
+  // Resolve hint → x position
+  resolveHint(hint,anchorW,wallW,placed,wall,features,utilities){
+    if(hint==="under-window"){
+      const win=LE.firstWindow(wall,features);
+      if(win) return clamp(Math.round(win.x+win.width/2-anchorW/2),0,wallW-anchorW);
+      return Math.round(wallW/2-anchorW/2);
+    }
+    if(hint==="center") return Math.round(wallW/2-anchorW/2);
+    if(hint==="end-left") return 0;
+    if(hint==="end-right") return wallW-anchorW;
+    if(hint==="right-of-sink"){
+      const s=placed.find(p=>p.role==="sink");
+      return s?s.x+s.w:Math.round(wallW/2);
+    }
+    if(hint==="left-of-sink"){
+      const s=placed.find(p=>p.role==="sink");
+      return s?s.x-anchorW:Math.round(wallW/2-anchorW);
+    }
+    if(hint==="at-water"){
+      const u=LE.utilityAt(wall,"water",utilities);
+      if(u) return clamp(Math.round(u.x-anchorW/2),0,wallW-anchorW);
+      return Math.round(wallW/2-anchorW/2);
+    }
+    if(hint==="at-gas"){
+      const u=LE.utilityAt(wall,"gas",utilities);
+      if(u) return clamp(Math.round(u.x-anchorW/2),0,wallW-anchorW);
+      return Math.round(wallW/2-anchorW/2);
+    }
+    return Math.round(wallW/2-anchorW/2);
+  },
+
+  // Find free segments in [0, wallW] given occupied zones
+  freeSegs(wallW,occ){
+    const sorted=[...occ].sort((a,b)=>a.x-b.x);
+    const segs=[];
+    let cur=0;
+    for(const o of sorted){
+      const ox=Math.max(0,o.x);
+      if(ox>cur+0.5) segs.push({x:Math.round(cur),endX:Math.round(ox)});
+      cur=Math.max(cur,ox+o.w);
+    }
+    if(cur<wallW-0.5) segs.push({x:Math.round(cur),endX:Math.round(wallW)});
+    return segs.filter(s=>s.endX-s.x>=MIN_CAB);
+  },
+
+  // Fill a segment [x, endX] with standard cabinets
+  fillSeg(startX,endX){
+    const cabs=[];
+    let cur=startX;
+    while(endX-cur>=MIN_CAB){
+      // Find largest standard width that fits
+      const sw=FILL_W.find(w=>w<=endX-cur);
+      if(!sw) break;
+      // If remaining after this would be too small for another cab, use the full remaining space
+      // (pick a standard width closest to remaining)
+      const remaining=endX-cur;
+      if(remaining-sw>0&&remaining-sw<MIN_CAB){
+        // Use the full remaining as one cab (pick nearest standard or exact)
+        const exact=FILL_W.find(w=>w<=remaining)||remaining;
+        cabs.push({x:cur,w:remaining<=48?remaining:exact});
+        cur+=remaining;
+      } else {
+        cabs.push({x:cur,w:sw});
+        cur+=sw;
+      }
+    }
+    return cabs;
+  },
+
+  // Build all cabinets for one wall
+  buildWall(wallName,wallW,assignments,room,style,upperH){
+    const features=room.features||[];
+    const utilities=room.utilities||[];
+    const appliances=room.appliances||[];
+    const doorObs=LE.lowerObstacles(wallName,features);
+
+    const placed=[]; // placed anchors with roles
+    const allCabs=[];
+
+    // Get appliance dimension
+    const appDim=role=>{
+      const map={sink:"sink",range:"range",fridge:"fridge",dishwasher:"dishwasher"};
+      return appliances.find(a=>a.type===map[role]);
+    };
+
+    // Place anchors in order: sink first (others may reference it)
+    const order=["sink","fridge","pantry","range","dishwasher"];
+    for(const role of order){
+      const asgn=assignments[role];
+      if(!asgn||asgn.wall!==wallName) continue;
+
+      const ap=appDim(role);
+      let w,type,h,d,notes;
+      switch(role){
+        case"sink":
+          w=ap?Math.max(ap.w+3,30):33; type="base"; h=34.5; d=24; notes="Sink base"; break;
+        case"range":
+          w=ap?ap.w:30; type="base"; h=34.5; d=24; notes="Range"; break;
+        case"fridge":
+          w=ap?ap.w:36; type="base"; h=34.5; d=24; notes="Fridge space"; break;
+        case"dishwasher":
+          w=24; type="base"; h=34.5; d=24; notes="Dishwasher"; break;
+        case"pantry":
+          w=24; type="tall"; h=84; d=24; notes="Pantry"; break;
+        default: continue;
+      }
+
+      // Snap to nearest standard width (except range/fridge which need exact)
+      if(role!=="range"&&role!=="fridge"&&role!=="dishwasher"){
+        const snapped=FILL_W.find(sw=>sw>=w);
+        if(snapped) w=snapped;
+      }
+
+      let x=LE.resolveHint(asgn.hint,w,wallW,placed,wallName,features,utilities);
+      // Only nudge around door obstacles (not other anchors — we resolve those next)
+      x=LE.nudge(x,w,wallW,doorObs);
+      x=clamp(Math.round(x),0,wallW-w);
+
+      placed.push({x,w,role,type,h:h,d:d,notes});
+    }
+
+    // Resolve anchor overlaps: sort by x, push right if overlapping
+    placed.sort((a,b)=>a.x-b.x);
+    for(let i=1;i<placed.length;i++){
+      const minX=placed[i-1].x+placed[i-1].w;
+      if(placed[i].x<minX) placed[i].x=minX;
+    }
+    // If last anchor exceeds wall, compact from right
+    if(placed.length>0){
+      const last=placed[placed.length-1];
+      if(last.x+last.w>wallW){
+        // Push everything left proportionally
+        let overflow=last.x+last.w-wallW;
+        for(let i=placed.length-1;i>=0&&overflow>0;i--){
+          const shift=Math.min(overflow,i>0?placed[i].x-(placed[i-1].x+placed[i-1].w):placed[i].x);
+          placed[i].x-=shift;
+          overflow-=shift;
+        }
+      }
+    }
+    // Clamp all
+    placed.forEach(p=>{p.x=clamp(p.x,0,wallW-p.w);});
+
+    // Build occupied from resolved anchors + door obstacles
+    const occupied=[...doorObs,...placed.map(p=>({x:p.x,w:p.w}))];
+
+    // Generate cabinet objects from placed anchors
+    for(const p of placed){
+      // Fridge is a gap — don't generate a cabinet
+      if(p.role!=="fridge"){
+        allCabs.push({type:p.type||"base",wall:wallName,w:p.w,h:p.h||34.5,d:p.d||24,x:p.x,
+          material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:p.notes||""});
+      }
+    }
+
+    // Fill remaining space with base cabinets
+    const freeSegs=LE.freeSegs(wallW,occupied);
+    for(const seg of freeSegs){
+      const fills=LE.fillSeg(seg.x,seg.endX);
+      for(const f of fills){
+        allCabs.push({type:"base",wall:wallName,w:f.w,h:34.5,d:24,x:f.x,
+          material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:""});
+      }
+    }
+
+    // Generate uppers — skip windows, doors, range hood zone, and fridge zone
+    const rangeItem=placed.find(p=>p.role==="range");
+    const fridgeItem=placed.find(p=>p.role==="fridge");
+    const upperObs=LE.upperObstacles(wallName,features,
+      rangeItem?{x:rangeItem.x-2,w:rangeItem.w+4}:null);
+    // Also exclude fridge zone from uppers
+    if(fridgeItem) upperObs.push({x:fridgeItem.x,w:fridgeItem.w});
+    // Exclude pantry zone from uppers (tall cab covers that space)
+    const pantryItem=placed.find(p=>p.role==="pantry");
+    if(pantryItem) upperObs.push({x:pantryItem.x,w:pantryItem.w});
+
+    // Find contiguous runs of lower cabs and generate matching uppers
+    const lowers=allCabs.filter(c=>c.type==="base").sort((a,b)=>a.x-b.x);
+    // Merge lowers into runs
+    const runs=[];
+    for(const l of lowers){
+      const last=runs[runs.length-1];
+      if(last&&Math.abs(l.x-(last.x+last.w))<1){
+        last.w=l.x+l.w-last.x; // extend run
+      } else {
+        runs.push({x:l.x,w:l.w});
+      }
+    }
+    // For each run, find the portions not blocked by upper obstacles
+    for(const run of runs){
+      const runOcc=upperObs.map(o=>({x:Math.max(run.x,o.x),w:Math.min(run.x+run.w,o.x+o.w)-Math.max(run.x,o.x)})).filter(o=>o.w>0);
+      const freeUpper=LE.freeSegs(run.x+run.w,[...runOcc.map(o=>({x:o.x,w:o.w}))].concat([{x:0,w:run.x}]));
+      for(const seg of freeUpper){
+        if(seg.endX-seg.x<MIN_CAB) continue;
+        const fills=LE.fillSeg(seg.x,seg.endX);
+        for(const f of fills){
+          allCabs.push({type:"upper",wall:wallName,w:f.w,h:upperH||30,d:12,x:f.x,
+            material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:""});
+        }
+      }
+    }
+
+    return allCabs;
+  },
+
+  // Compute work triangle distances (approximate)
+  workTriangle(placed,activeWalls,room){
+    const find=role=>{
+      for(const w of activeWalls){
+        const p=placed.find(x=>x.role===role&&x.wall===w);
+        if(p) return{wall:w,cx:p.x+p.w/2};
+      }
+      return null;
+    };
+    const sink=find("sink"),range=find("range"),fridge=find("fridge");
+    if(!sink||!range||!fridge) return null;
+
+    const dist=(a,b)=>{
+      if(a.wall===b.wall) return Math.abs(a.cx-b.cx);
+      // Adjacent walls — distance is from each point to the corner + turn
+      return a.cx+b.cx; // simplified corner distance
+    };
+
+    const sr=dist(sink,range),rf=dist(range,fridge),fs=dist(fridge,sink);
+    const total=sr+rf+fs;
+    return{sink:Math.round(sr),range:Math.round(rf),fridge:Math.round(fs),total:Math.round(total),
+      valid:total>=144&&total<=312,note:total>=144&&total<=312?"Work triangle is within NKBA guidelines.":"Work triangle is outside the 144\"–312\" recommended range."};
+  },
+
+  // Master: build entire layout from AI plan
+  buildLayout(plan,room,activeWalls){
+    const style={material:plan.material||"maple",doorStyle:plan.doorStyle||"Shaker",finish:plan.finish||"Natural"};
+    let allCabs=[];
+    const allPlaced=[];
+
+    for(const wall of activeWalls){
+      const ww=wallWidth(wall,room);
+      const wallCabs=LE.buildWall(wall,ww,plan.assignments||{},room,style,plan.upperHeight||30);
+      allCabs=[...allCabs,...wallCabs];
+      // Collect placed anchors for work triangle
+      for(const role of["sink","range","fridge"]){
+        const a=(plan.assignments||{})[role];
+        if(a&&a.wall===wall){
+          const cab=wallCabs.find(c=>c.notes&&c.notes.toLowerCase().includes(role));
+          if(cab) allPlaced.push({role,wall,x:cab.x,w:cab.w});
+          // Fridge won't have a cab — use the placed zone
+          if(role==="fridge"&&!cab){
+            const ap=(room.appliances||[]).find(x=>x.type==="fridge");
+            const fw=ap?ap.w:36;
+            const hint=a.hint;
+            const x=hint==="end-right"?ww-fw:hint==="end-left"?0:Math.round(ww/2-fw/2);
+            allPlaced.push({role,wall,x,w:fw});
+          }
+        }
+      }
+    }
+
+    // Island
+    if(plan.island&&room.width>=120&&room.depth>=144){
+      allCabs.push({type:"island",wall:"Island",w:plan.islandWidth||48,h:34.5,d:plan.islandDepth||36,
+        x:0,ix:0,iy:0,material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:"Island"});
+    }
+
+    // Add IDs
+    allCabs=allCabs.map(c=>({id:uid(),...c,ix:c.ix||0,iy:c.iy||0,useStandard:true}));
+
+    // Work triangle
+    const tri=LE.workTriangle(allPlaced,activeWalls,room);
+
+    return{cabinets:allCabs,workTriangle:tri,placed:allPlaced};
+  }
+};
+
+/* ─── NKBA CHECKLIST ──────────────────────────────────────────────────────── */
+function buildChecklist(room,activeWalls,cabs,tri){
+  const checks=[];
+  // Aisle clearance
+  const hasFacing=activeWalls.includes("South")&&activeWalls.includes("North");
+  if(hasFacing){
+    const aisle=room.depth-48; // two 24" deep cabinets
+    checks.push({rule:"Primary aisle clearance",description:'42" min between facing surfaces',recommended:'48"',met:aisle>=42});
+  } else {
+    checks.push({rule:"Primary aisle clearance",description:'42" min between facing surfaces',recommended:'48"',met:true});
+  }
+  checks.push({rule:"Counter height",description:'36" floor to countertop (34.5" cab + 1.5" top)',recommended:'36"',met:true});
+  checks.push({rule:"Upper cabinet elevation",description:'18" min between countertop and upper bottom',recommended:'18"',met:true});
+  // Work triangle
+  if(tri){
+    checks.push({rule:"Work triangle perimeter",description:'144"–312" total',recommended:'<264"',met:tri.valid});
+  }
+  // Sink landing — check if there's a cab on each side of sink
+  const sinkCab=cabs.find(c=>c.notes&&c.notes.toLowerCase().includes("sink"));
+  if(sinkCab){
+    const sameWallLowers=cabs.filter(c=>c.wall===sinkCab.wall&&c.type==="base").sort((a,b)=>a.x-b.x);
+    const leftNeighbor=sameWallLowers.find(c=>Math.abs(c.x+c.w-sinkCab.x)<2&&c.id!==sinkCab.id);
+    const rightNeighbor=sameWallLowers.find(c=>Math.abs(c.x-(sinkCab.x+sinkCab.w))<2&&c.id!==sinkCab.id);
+    const leftW=leftNeighbor?leftNeighbor.w:0,rightW=rightNeighbor?rightNeighbor.w:0;
+    checks.push({rule:"Sink landing space",description:'24" one side, 18" other',recommended:'24"/18"',met:leftW>=18&&rightW>=18});
+  }
+  // Range landing
+  const rangeCab=cabs.find(c=>c.notes&&c.notes.toLowerCase().includes("range"));
+  if(rangeCab){
+    const sameWallLowers=cabs.filter(c=>c.wall===rangeCab.wall&&c.type==="base").sort((a,b)=>a.x-b.x);
+    const leftN=sameWallLowers.find(c=>Math.abs(c.x+c.w-rangeCab.x)<2&&c.id!==rangeCab.id);
+    const rightN=sameWallLowers.find(c=>Math.abs(c.x-(rangeCab.x+rangeCab.w))<2&&c.id!==rangeCab.id);
+    checks.push({rule:"Range landing space",description:'12" one side, 15" other',recommended:'15"/12"',met:(leftN?leftN.w>=12:false)&&(rightN?rightN.w>=12:false)});
+  }
+  // Island clearance
+  const island=cabs.find(c=>c.type==="island");
+  if(island){
+    const clearance=Math.min(room.width-island.w,room.depth-island.d)/2;
+    checks.push({rule:"Island clearance",description:'42" min on all sides',recommended:'48"',met:clearance>=42});
+  }
+  return checks;
+}
 
 const makeCab=(type,wall,all,ww)=>{
   const def=DEFS[type];
@@ -150,6 +527,166 @@ function FeatureEditor({features,setFeatures,activeWalls,room}){
           ))}
         </div>
       }
+    </Card>
+  );
+}
+
+/* ─── APPLIANCE EDITOR ─────────────────────────────────────────────────────── */
+function ApplianceEditor({appliances,setAppliances,activeWalls,room}){
+  const add=type=>{
+    const def=APPLIANCE_TYPES.find(a=>a.key===type);
+    if(!def)return;
+    const wall=activeWalls[0]||"South";
+    const ww=wallWidth(wall,room);
+    setAppliances(a=>[...a,{id:aid(),type:type,label:def.label,wall,x:Math.round(ww/2-def.defW/2),w:def.defW,h:def.defH,d:def.defD}]);
+  };
+  const upd=(id,ch)=>setAppliances(a=>a.map(x=>x.id===id?{...x,...ch}:x));
+  const del=id=>setAppliances(a=>a.filter(x=>x.id!==id));
+  const IS={...IB,padding:"5px 8px",fontSize:13};
+  // Which appliance types haven't been added yet?
+  const usedTypes=appliances.map(a=>a.type);
+  const available=APPLIANCE_TYPES.filter(t=>!usedTypes.includes(t.key));
+
+  return(
+    <Card>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h3 style={{fontSize:16,fontWeight:600,color:T.ink}}>Appliances</h3>
+        {available.length>0&&(
+          <select onChange={e=>{if(e.target.value){add(e.target.value);e.target.value="";}}} defaultValue="" style={{...IS,width:"auto",padding:"6px 12px",fontSize:12,color:T.amber,fontWeight:600,borderColor:T.amber,background:"#fff"}}>
+            <option value="" disabled>+ Add appliance</option>
+            {available.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
+          </select>
+        )}
+      </div>
+      {appliances.length===0
+        ?<p style={{fontSize:13,color:T.faint,fontStyle:"italic"}}>No appliances added yet. The AI will assume standard sizes if left empty.</p>
+        :<div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {appliances.map(a=>{
+            const emoji={fridge:"🧊",range:"🔥",dishwasher:"🫧",microwave:"📡",rangeHood:"💨",sink:"🚰"}[a.type]||"📦";
+            return(
+              <div key={a.id} style={{display:"grid",gridTemplateColumns:"auto 1fr 60px 60px 60px 90px auto",gap:8,alignItems:"center",padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+                <span style={{fontSize:18}}>{emoji}</span>
+                <div style={{fontSize:14,fontWeight:500,color:T.ink}}>{a.label}</div>
+                <div>
+                  <div style={{fontSize:10,color:T.faint,marginBottom:2,textAlign:"center"}}>W"</div>
+                  <input type="number" value={a.w} onChange={e=>upd(a.id,{w:parseInt(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center"}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.faint,marginBottom:2,textAlign:"center"}}>H"</div>
+                  <input type="number" value={a.h} onChange={e=>upd(a.id,{h:parseInt(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center"}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.faint,marginBottom:2,textAlign:"center"}}>D"</div>
+                  <input type="number" value={a.d} onChange={e=>upd(a.id,{d:parseInt(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center"}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Wall</div>
+                  <select value={a.wall} onChange={e=>upd(a.id,{wall:e.target.value})} style={{...IS,width:"100%"}}>
+                    {activeWalls.map(w=><option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <button onClick={()=>del(a.id)} style={{background:"none",border:"none",color:T.red,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1}}>×</button>
+              </div>
+            );
+          })}
+        </div>
+      }
+      <p style={{fontSize:12,color:T.faint,marginTop:10}}>Appliance dimensions help the AI place cabinets with proper clearance.</p>
+    </Card>
+  );
+}
+
+/* ─── UTILITIES EDITOR (gas, plumbing, electrical) ────────────────────────── */
+function UtilitiesEditor({utilities,setUtilities,activeWalls,room}){
+  const add=type=>{
+    const def=UTILITY_TYPES.find(u=>u.key===type);
+    if(!def)return;
+    const wall=activeWalls[0]||"South";
+    const ww=wallWidth(wall,room);
+    setUtilities(u=>[...u,{id:utid(),type:type,label:def.label,icon:def.icon,wall,x:Math.round(ww/2),fromFloor:6,notes:""}]);
+  };
+  const upd=(id,ch)=>setUtilities(u=>u.map(x=>x.id===id?{...x,...ch}:x));
+  const del=id=>setUtilities(u=>u.filter(x=>x.id!==id));
+  const IS={...IB,padding:"5px 8px",fontSize:13};
+
+  return(
+    <Card>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h3 style={{fontSize:16,fontWeight:600,color:T.ink}}>Plumbing, gas & electrical</h3>
+        <div style={{display:"flex",gap:6}}>
+          {UTILITY_TYPES.map(t=>(
+            <button key={t.key} onClick={()=>add(t.key)} title={`Add ${t.label}`} style={{padding:"5px 10px",borderRadius:6,fontSize:12,fontWeight:600,background:T.surface,border:`1px solid ${T.border}`,color:T.muted,cursor:"pointer"}}>
+              {t.icon}
+            </button>
+          ))}
+        </div>
+      </div>
+      {utilities.length===0
+        ?<p style={{fontSize:13,color:T.faint,fontStyle:"italic"}}>Mark gas lines, water supply, drains, and outlets so the AI avoids placing cabinets over them.</p>
+        :<div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {utilities.map(u=>(
+            <div key={u.id} style={{display:"grid",gridTemplateColumns:"auto 1fr 80px 80px 1fr auto",gap:8,alignItems:"center",padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+              <span style={{fontSize:18}}>{u.icon}</span>
+              <div style={{fontSize:14,fontWeight:500,color:T.ink}}>{u.label}</div>
+              <div>
+                <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Wall</div>
+                <select value={u.wall} onChange={e=>upd(u.id,{wall:e.target.value})} style={{...IS,width:"100%"}}>
+                  {activeWalls.map(w=><option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:T.faint,marginBottom:2}}>From left"</div>
+                <input type="number" value={u.x} onChange={e=>upd(u.id,{x:parseInt(e.target.value)||0})} style={{...IS,width:"100%"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Notes</div>
+                <input type="text" value={u.notes} onChange={e=>upd(u.id,{notes:e.target.value})} style={{...IS,width:"100%"}} placeholder="e.g. main shutoff"/>
+              </div>
+              <button onClick={()=>del(u.id)} style={{background:"none",border:"none",color:T.red,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1}}>×</button>
+            </div>
+          ))}
+        </div>
+      }
+    </Card>
+  );
+}
+
+/* ─── ROOM OPTIONS CARD ───────────────────────────────────────────────────── */
+function RoomOptionsCard({room,setRoom}){
+  const Toggle=({label,desc,value,onChange})=>(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+      <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>{label}</div><div style={{fontSize:12,color:T.faint}}>{desc}</div></div>
+      <button onClick={()=>onChange(!value)} style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:value?T.amber:T.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
+        <span style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",left:value?22:2,display:"block"}}/>
+      </button>
+    </div>
+  );
+  const IS={...IB,padding:"7px 10px"};
+  return(
+    <Card>
+      <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:14}}>Room options</h3>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <Toggle label="Cabinets to ceiling" desc="Upper cabinets extend to ceiling height" value={room.toCeiling} onChange={v=>setRoom(r=>({...r,toCeiling:v}))}/>
+        <Toggle label="Crown moulding" desc="Decorative trim at top of uppers" value={room.crownMoulding} onChange={v=>setRoom(r=>({...r,crownMoulding:v}))}/>
+        <div style={{padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>Bulkhead / soffit</div><div style={{fontSize:12,color:T.faint}}>Dropped ceiling section above uppers</div></div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <input type="number" value={room.bulkheadHeight} onChange={e=>setRoom(r=>({...r,bulkheadHeight:parseInt(e.target.value)||0}))} style={{...IS,width:64,textAlign:"center"}} placeholder="0"/>
+              <span style={{fontSize:13,color:T.faint}}>inches</span>
+            </div>
+          </div>
+          {room.bulkheadHeight>0&&<p style={{fontSize:12,color:T.amber,marginTop:6}}>Uppers will be limited to {room.height-UPPER_BTM-room.bulkheadHeight}" max height.</p>}
+        </div>
+        <div style={{padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>Cabinet box material</div><div style={{fontSize:12,color:T.faint}}>Interior box construction (separate from door finish)</div></div>
+            <select value={room.boxMaterial} onChange={e=>setRoom(r=>({...r,boxMaterial:e.target.value}))} style={{...IS,width:180}}>
+              {Object.entries(BOX_MATS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -288,6 +825,24 @@ CRITICAL RULES:
             activeWalls={activeWalls} room={room}/>
         </div>
 
+        <div style={{marginBottom:24}}>
+          <ApplianceEditor
+            appliances={room.appliances||[]}
+            setAppliances={a=>setRoom(r=>({...r,appliances:typeof a==="function"?a(r.appliances||[]):a}))}
+            activeWalls={activeWalls} room={room}/>
+        </div>
+
+        <div style={{marginBottom:24}}>
+          <UtilitiesEditor
+            utilities={room.utilities||[]}
+            setUtilities={u=>setRoom(r=>({...r,utilities:typeof u==="function"?u(r.utilities||[]):u}))}
+            activeWalls={activeWalls} room={room}/>
+        </div>
+
+        <div style={{marginBottom:24}}>
+          <RoomOptionsCard room={room} setRoom={setRoom}/>
+        </div>
+
         <Btn onClick={onNext} disabled={activeWalls.length===0} style={{fontSize:15,padding:"12px 28px"}}>Next: Get AI layout recommendations →</Btn>
       </div>
     </div>
@@ -337,21 +892,90 @@ function RecommendationsView({room,activeWalls,onApply,onSkip}){
     try{
       const sqft=((room.width/12)*(room.depth/12)).toFixed(1);
       const wallList=activeWalls.join(", ");
+      const wallDims=activeWalls.map(w=>`${w}: ${wallWidth(w,room)}"`).join(", ");
       const featList=(room.features||[]).map(f=>`${f.type} on ${f.wall} wall at ${f.x}" from left, ${f.width}" wide`).join("; ")||"none";
-      const txt=await callClaude([{role:"user",content:
-        `You are an NKBA-certified kitchen designer. Generate a cabinet layout.
+      const applianceList=(room.appliances||[]).map(a=>`${a.label}: ${a.w}"W on ${a.wall} wall`).join("; ")||"standard sizes";
+      const utilityList=(room.utilities||[]).map(u=>`${u.label} on ${u.wall} wall at ${u.x}" from left`).join("; ")||"none marked";
 
-Space: ${room.width}" wide × ${room.depth}" deep × ${room.height}" ceiling (${sqft} sq ft)
-AVAILABLE WALLS ONLY: ${wallList}
-OBSTACLES (windows/doors — do NOT place cabinets over these): ${featList}
+      // SIMPLIFIED PROMPT — AI makes design decisions, code does the math
+      const txt=await callClaude([{role:"user",content:
+        `You are an NKBA-certified kitchen designer. You decide WHERE things go — the software handles exact placement math.
+
+ROOM: ${room.width}" × ${room.depth}" × ${room.height}" ceiling (${sqft} sq ft)
+WALLS WITH CABINETS: ${wallDims}
+WINDOWS/DOORS: ${featList}
+APPLIANCES: ${applianceList}
+UTILITIES: ${utilityList}
+OPTIONS: ${room.toCeiling?"Cabinets to ceiling.":""}${room.crownMoulding?" Crown moulding.":""}${room.bulkheadHeight>0?" Bulkhead "+room.bulkheadHeight+'" drop.':""} Box material: ${BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}.
+
+YOUR JOB: Pick the layout type, assign each appliance/fixture to a wall with a placement hint, and choose materials. The software will calculate exact positions, fill gaps with standard cabinets, and generate matching uppers automatically.
+
+AVAILABLE HINTS for assignments:
+- "under-window" — center under the first window on that wall
+- "center" — center on the wall
+- "end-left" — flush to left end of wall
+- "end-right" — flush to right end of wall
+- "right-of-sink" — immediately right of the sink
+- "left-of-sink" — immediately left of the sink
+- "at-water" — at the water supply location
+- "at-gas" — at the gas line location
+
+RULES:
+- Sink goes near water supply if marked, or under a window, or centered
+- Range/stove goes at gas line if marked, otherwise center of a different wall from sink
+- Fridge goes at the end of a run (end-left or end-right)
+- Dishwasher goes adjacent to sink (right-of-sink or left-of-sink)
+- Pantry (tall cab) goes at the end of a wall, opposite end from fridge if same wall
+- Island only if room is ≥120" wide AND ≥144" deep
+- Spread appliances across walls for a good work triangle
 
 Return ONLY valid JSON — no markdown:
-{"layout":"L-Shape","explanation":"2-3 sentences.","workTriangle":{"sink":60,"range":48,"fridge":72,"total":180,"valid":true,"note":"sentence."},"bestPractices":[{"rule":"Primary aisle clearance","description":"42\\" min between facing surfaces","recommended":"48\\"","met":true},{"rule":"Counter height","description":"36\\" floor to countertop","recommended":"36\\"","met":true},{"rule":"Upper cabinet elevation","description":"18\\" min between countertop and upper cab bottom","recommended":"18\\"","met":true},{"rule":"Work triangle perimeter","description":"144\\"–312\\" total","recommended":"180\\"","met":true},{"rule":"Sink landing space","description":"24\\" one side, 18\\" other","recommended":"24\\"/18\\"","met":true},{"rule":"Range landing space","description":"12\\" one side, 15\\" other","recommended":"15\\"/12\\"","met":true},{"rule":"Island clearance","description":"42\\" min on all sides","recommended":"48\\"","met":true}],"cabinets":[{"type":"base","wall":"South","w":36,"h":34.5,"d":24,"material":"maple","doorStyle":"Shaker","finish":"Natural","notes":"Sink base","x":6}],"tips":["Tip 1.","Tip 2.","Tip 3."],"warnings":[]}
+{
+  "layout": "L-Shape",
+  "material": "maple",
+  "doorStyle": "Shaker",
+  "finish": "Natural",
+  "upperHeight": 30,
+  "assignments": {
+    "sink": {"wall": "${activeWalls[0]}", "hint": "under-window"},
+    "range": {"wall": "${activeWalls[activeWalls.length>1?1:0]}", "hint": "center"},
+    "fridge": {"wall": "${activeWalls[activeWalls.length>1?1:0]}", "hint": "end-right"},
+    "dishwasher": {"wall": "${activeWalls[0]}", "hint": "right-of-sink"},
+    "pantry": {"wall": "${activeWalls[activeWalls.length>1?1:0]}", "hint": "end-left"}
+  },
+  "island": false,
+  "islandWidth": 48,
+  "islandDepth": 36,
+  "explanation": "2-3 sentences explaining your design reasoning.",
+  "tips": ["Specific actionable tip 1.", "Tip 2.", "Tip 3."],
+  "warnings": ["Any concerns about the space."]
+}`
+      }],1200);
 
-RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. 10–16 cabinets. Mix base, upper, one tall pantry. Island only if ≥120" wide AND ≥144" deep. x values must not exceed wall width minus cabinet width.`
-      }],2500);
-      setRecs(parseJSON(txt));
-    }catch(e){setErr("Could not generate — please try again.");}
+      const plan=parseJSON(txt);
+
+      // Run through the layout engine
+      // Compute upper cab height from room options (don't rely on AI for math)
+      if(room.toCeiling){
+        plan.upperHeight=room.height-UPPER_BTM-(room.bulkheadHeight||0);
+      } else if(room.bulkheadHeight>0){
+        plan.upperHeight=Math.min(plan.upperHeight||30,room.height-UPPER_BTM-room.bulkheadHeight);
+      }
+
+      const{cabinets,workTriangle}=LE.buildLayout(plan,room,activeWalls);
+      const checklist=buildChecklist(room,activeWalls,cabinets,workTriangle);
+
+      setRecs({
+        layout:plan.layout,
+        explanation:plan.explanation,
+        workTriangle,
+        bestPractices:checklist,
+        cabinets,
+        tips:plan.tips||[],
+        warnings:plan.warnings||[],
+        plan // keep the raw plan for regeneration
+      });
+    }catch(e){console.error(e);setErr("Could not generate — please try again.");}
     setLoading(false);
   };
   return(
@@ -362,6 +986,10 @@ RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. 10–1
         <div style={{display:"flex",gap:8,marginBottom:24,flexWrap:"wrap"}}>
           {activeWalls.map(w=><Badge key={w} color="amber">{w} wall</Badge>)}
           {(room.features||[]).map(f=><Badge key={f.id} color="green">{f.type==="window"?"🪟":"🚪"} {f.wall}</Badge>)}
+          {(room.appliances||[]).map(a=><Badge key={a.id} color="amber">{a.label}</Badge>)}
+          {(room.utilities||[]).map(u=><Badge key={u.id} color="green">{u.icon} {u.label}</Badge>)}
+          {room.toCeiling&&<Badge color="amber">To ceiling</Badge>}
+          {room.crownMoulding&&<Badge color="amber">Crown moulding</Badge>}
         </div>
         {!recs&&(
           <div>
@@ -434,13 +1062,31 @@ RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. 10–1
 }
 
 /* ─── ELEVATION CANVAS ────────────────────────────────────────────────────── */
-function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features}){
+function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilities}){
   const drag=useRef(null);
+  const SNAP=3; // snap within 3 inches
   const PL=60,PR=30,PT=40,PB=60;
   const SW=PL+wallW*ES+PR,SH=PT+wallH*ES+PB,FY=PT+wallH*ES;
   const getCabY=c=>DEFS[c.type].row==="upper"?FY-(UPPER_BTM+c.h)*ES:FY-c.h*ES;
   const onPD=(e,id)=>{e.stopPropagation();onSel(id);const c=cabs.find(x=>x.id===id);if(c)drag.current={id,mx0:e.clientX,cx0:c.x};};
-  const onPM=e=>{if(!drag.current)return;const c=cabs.find(x=>x.id===drag.current.id);if(!c)return;onMove(drag.current.id,clamp(drag.current.cx0+(e.clientX-drag.current.mx0)/ES,0,wallW-c.w));};
+  const onPM=e=>{
+    if(!drag.current)return;
+    const c=cabs.find(x=>x.id===drag.current.id);if(!c)return;
+    let nx=clamp(drag.current.cx0+(e.clientX-drag.current.mx0)/ES,0,wallW-c.w);
+    // Magnetic snap to neighbors in same row
+    const row=DEFS[c.type]?.row;
+    const others=cabs.filter(o=>o.id!==c.id&&o.wall===wall&&DEFS[o.type]?.row===row);
+    for(const o of others){
+      // snap left edge of dragged to right edge of other
+      if(Math.abs(nx-(o.x+o.w))<SNAP) nx=o.x+o.w;
+      // snap right edge of dragged to left edge of other
+      if(Math.abs((nx+c.w)-o.x)<SNAP) nx=o.x-c.w;
+    }
+    // snap to wall edges
+    if(nx<SNAP) nx=0;
+    if(wallW-nx-c.w<SNAP) nx=wallW-c.w;
+    onMove(drag.current.id,nx);
+  };
   const onPU=()=>{drag.current=null;};
   const wallCabs=cabs.filter(c=>c.wall===wall);
   const wallFeatures=(features||[]).filter(f=>f.wall===wall);
@@ -499,6 +1145,23 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features}){
             </g>
           );
         }
+      })}
+
+      {/* ── UTILITY MARKERS ── */}
+      {(utilities||[]).filter(u=>u.wall===wall).map(u=>{
+        const ux=PL+u.x*ES;
+        const uy=FY-(u.fromFloor||6)*ES;
+        const colors={water:"#4A90D9",drain:"#6B7B8D",gas:"#E07030",electrical:"#D4A017"};
+        const col=colors[u.type]||T.muted;
+        return(
+          <g key={u.id}>
+            <circle cx={ux} cy={uy} r={8} fill={col} fillOpacity={0.2} stroke={col} strokeWidth={1.5}/>
+            <text x={ux} y={uy+4} textAnchor="middle" fill={col} fontSize={10} fontFamily="DM Sans" fontWeight={700}>
+              {u.type==="water"?"W":u.type==="drain"?"D":u.type==="gas"?"G":"E"}
+            </text>
+            <text x={ux} y={uy-14} textAnchor="middle" fill={col} fontSize={9} fontFamily="DM Sans">{u.label}</text>
+          </g>
+        );
       })}
 
       {/* Countertops */}
@@ -645,6 +1308,29 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland}){
         }
       })}
 
+      {/* ── UTILITY MARKERS on floor plan ── */}
+      {(room.utilities||[]).map(u=>{
+        const colors={water:"#4A90D9",drain:"#6B7B8D",gas:"#E07030",electrical:"#D4A017"};
+        const col=colors[u.type]||T.muted;
+        const r=7;
+        let ux,uy;
+        switch(u.wall){
+          case"South":ux=L+u.x*FS;uy=B-r;break;
+          case"North":ux=L+u.x*FS;uy=Tp+r;break;
+          case"East":ux=R-r;uy=Tp+u.x*FS;break;
+          case"West":ux=L+r;uy=Tp+u.x*FS;break;
+          default:return null;
+        }
+        return(
+          <g key={u.id}>
+            <circle cx={ux} cy={uy} r={r} fill={col} fillOpacity={0.25} stroke={col} strokeWidth={1.5}/>
+            <text x={ux} y={uy+3.5} textAnchor="middle" fill={col} fontSize={8} fontFamily="DM Sans" fontWeight={700}>
+              {u.type==="water"?"W":u.type==="drain"?"D":u.type==="gas"?"G":"E"}
+            </text>
+          </g>
+        );
+      })}
+
       {/* Cabinets */}
       {cabs.map(c=>{
         const r=getRect(c);if(!r)return null;
@@ -684,6 +1370,10 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland}){
       <text x={L+116} y={B+43} fill={T.faint} fontSize={11} fontFamily="DM Sans">Upper</text>
       <rect x={L+160} y={B+34} width={12} height={10} fill={T.winFill} stroke={T.winStroke} strokeWidth={1.5} rx={1}/>
       <text x={L+176} y={B+43} fill={T.faint} fontSize={11} fontFamily="DM Sans">Window</text>
+      {(room.utilities||[]).length>0&&<>
+        <circle cx={L+236} cy={B+39} r={5} fill="#4A90D9" fillOpacity={0.3} stroke="#4A90D9" strokeWidth={1}/>
+        <text x={L+244} y={B+43} fill={T.faint} fontSize={11} fontFamily="DM Sans">Utility</text>
+      </>}
     </svg>
   );
 }
@@ -816,8 +1506,8 @@ function QuoteView({cabs,project,setProject}){
       <div className="fade-up">
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:32}}>
           <div><h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:4}}>Project Quote</h1><p style={{fontSize:14,color:T.muted}}>{new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</p></div>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {[["Project name","name"],["Client","client"]].map(([l,k])=>(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {[["Project name","name"],["Client","client"],["Address","address"],["City","city"],["Province","province"],["Postal code","postal"],["Phone","phone"],["Email","email"]].map(([l,k])=>(
               <div key={k} style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:13,color:T.muted,width:90}}>{l}</span><input value={project[k]} onChange={e=>setProject(p=>({...p,[k]:e.target.value}))} style={{...IS,width:220}}/></div>
             ))}
           </div>
@@ -862,24 +1552,65 @@ function QuoteView({cabs,project,setProject}){
 }
 
 /* ─── ORDER SHEET ─────────────────────────────────────────────────────────── */
-function OrderSheet({cabs,project,room}){
+function OrderSheet({cabs,project,room,companyProfile}){
   const totalPrice=cabs.reduce((s,c)=>s+getPrice(c),0);
   const features=room.features||[];
   return(
     <div style={{flex:1,overflowY:"auto",padding:"36px 48px",maxWidth:900}}>
       <div className="fade-up">
-        <div style={{textAlign:"center",marginBottom:32}}><h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:4}}>Manufacturer Order Sheet</h1><p style={{fontSize:14,color:T.muted}}>{project.name} — {project.client||"No client"} — {new Date().toLocaleDateString()}</p></div>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:40,objectFit:"contain",marginBottom:8}}/>}
+          <h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:4}}>Manufacturer Order Sheet</h1>
+          <p style={{fontSize:14,color:T.muted}}>{companyProfile?.companyName||project.name} — {project.client||"No client"} — {new Date().toLocaleDateString()}</p>
+          {companyProfile?.phone&&<p style={{fontSize:13,color:T.faint}}>{[companyProfile.phone,companyProfile.email,companyProfile.licenseNum?("Lic: "+companyProfile.licenseNum):null].filter(Boolean).join(" · ")}</p>}
+        </div>
+
+        {/* Customer info */}
+        {(project.address||project.phone||project.email)&&(
+          <Card style={{marginBottom:16}}>
+            <Lbl style={{marginBottom:10}}>Customer contact</Lbl>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,fontSize:14}}>
+              {project.address&&<div><span style={{color:T.faint}}>Address:</span> {project.address}{project.city?`, ${project.city}`:""}{project.province?`, ${project.province}`:""} {project.postal}</div>}
+              {project.phone&&<div><span style={{color:T.faint}}>Phone:</span> {project.phone}</div>}
+              {project.email&&<div><span style={{color:T.faint}}>Email:</span> {project.email}</div>}
+            </div>
+          </Card>
+        )}
+
         <Card style={{marginBottom:24}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16}}>
             {[["Project",project.name||"—"],["Client",project.client||"—"],["Room",`${(room.width/12).toFixed(1)}' × ${(room.depth/12).toFixed(1)}'`],["Ceiling",`${room.height}"`]].map(([l,v])=>(
               <div key={l}><Lbl>{l}</Lbl><div style={{fontSize:15,fontWeight:500}}>{v}</div></div>
             ))}
           </div>
+          {/* Room options row */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
+            <div><Lbl>Box material</Lbl><div style={{fontSize:14,fontWeight:500}}>{BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}</div></div>
+            <div><Lbl>To ceiling</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.toCeiling?"Yes":"No"}</div></div>
+            <div><Lbl>Crown moulding</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.crownMoulding?"Yes":"No"}</div></div>
+            <div><Lbl>Bulkhead</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.bulkheadHeight>0?`${room.bulkheadHeight}" drop`:"None"}</div></div>
+          </div>
           {features.length>0&&(
             <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
               <Lbl style={{marginBottom:8}}>Room features</Lbl>
               <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
                 {features.map(f=><div key={f.id} style={{fontSize:13,color:T.muted,background:T.bg,border:`1px solid ${T.border}`,borderRadius:6,padding:"4px 10px"}}>{f.type==="window"?"🪟":"🚪"} {f.type} on {f.wall} wall — {f.width}" wide at {f.x}" from left</div>)}
+              </div>
+            </div>
+          )}
+          {(room.appliances||[]).length>0&&(
+            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
+              <Lbl style={{marginBottom:8}}>Appliances</Lbl>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+                {(room.appliances||[]).map(a=><div key={a.id} style={{fontSize:13,color:T.muted,background:T.bg,border:`1px solid ${T.border}`,borderRadius:6,padding:"8px 10px"}}><div style={{fontWeight:500,color:T.ink,marginBottom:2}}>{a.label}</div>{a.w}" × {a.h}" × {a.d}" — {a.wall} wall</div>)}
+              </div>
+            </div>
+          )}
+          {(room.utilities||[]).length>0&&(
+            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
+              <Lbl style={{marginBottom:8}}>Plumbing, gas & electrical</Lbl>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                {(room.utilities||[]).map(u=><div key={u.id} style={{fontSize:13,color:T.muted,background:T.bg,border:`1px solid ${T.border}`,borderRadius:6,padding:"4px 10px"}}>{u.icon} {u.label} — {u.wall} wall at {u.x}" from left{u.notes?` (${u.notes})`:""}</div>)}
               </div>
             </div>
           )}
@@ -923,7 +1654,7 @@ function OrderSheet({cabs,project,room}){
 }
 
 /* ─── CLIENT PRESENTATION VIEW ───────────────────────────────────────────── */
-function PresentationView({cabs,room,project,activeWalls}){
+function PresentationView({cabs,room,project,activeWalls,companyProfile}){
   const total=cabs.reduce((s,c)=>s+getPrice(c),0);
   const tax=Math.round(total*0.08);
   const date=new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
@@ -1058,8 +1789,14 @@ function PresentationView({cabs,room,project,activeWalls}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
           paddingBottom:28,borderBottom:`2px solid ${T.oak}`,marginBottom:36}}>
           <div>
-            <div style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.oak,marginBottom:4}}>
-              Kitchen Design Proposal
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:8}}>
+              {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:44,objectFit:"contain"}}/>}
+              <div>
+                <div style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.oak}}>
+                  Kitchen Design Proposal
+                </div>
+                {companyProfile?.companyName&&<div style={{fontSize:13,color:T.muted}}>{companyProfile.companyName}{companyProfile?.phone?" · "+companyProfile.phone:""}{companyProfile?.email?" · "+companyProfile.email:""}</div>}
+              </div>
             </div>
             <div style={{fontSize:14,color:T.muted}}>{date}</div>
           </div>
@@ -1067,7 +1804,11 @@ function PresentationView({cabs,room,project,activeWalls}){
             {project.client&&<div style={{fontFamily:"'Lora',serif",fontSize:18,color:T.ink,marginBottom:4}}>
               Prepared for: <strong>{project.client}</strong>
             </div>}
-            <div style={{fontSize:14,color:T.muted}}>{project.name}</div>
+            {project.address&&<div style={{fontSize:13,color:T.muted}}>{project.address}</div>}
+            {(project.city||project.province)&&<div style={{fontSize:13,color:T.muted}}>{[project.city,project.province,project.postal].filter(Boolean).join(", ")}</div>}
+            {project.phone&&<div style={{fontSize:13,color:T.muted}}>{project.phone}</div>}
+            {project.email&&<div style={{fontSize:13,color:T.muted}}>{project.email}</div>}
+            <div style={{fontSize:14,color:T.muted,marginTop:4}}>{project.name}</div>
             <div style={{fontSize:13,color:T.faint,marginTop:4}}>
               {(room.width/12).toFixed(1)}' × {(room.depth/12).toFixed(1)}' · {room.height}" ceiling
             </div>
@@ -1090,6 +1831,38 @@ function PresentationView({cabs,room,project,activeWalls}){
             </div>
           ))}
         </div>
+
+        {/* Room options summary */}
+        {(room.toCeiling||room.crownMoulding||room.bulkheadHeight>0||(room.appliances||[]).length>0||(room.utilities||[]).length>0)&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:40}}>
+            {/* Appliances */}
+            {(room.appliances||[]).length>0&&(
+              <div style={{padding:"16px 20px",border:`1px solid ${T.border}`,borderRadius:8}}>
+                <div style={{fontSize:11,fontWeight:600,color:T.muted,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Appliances</div>
+                {(room.appliances||[]).map(a=>(
+                  <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${T.surface}`,fontSize:13}}>
+                    <span style={{color:T.ink,fontWeight:500}}>{a.label}</span>
+                    <span style={{color:T.muted}}>{a.w}" × {a.h}" × {a.d}" — {a.wall} wall</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Room options */}
+            <div style={{padding:"16px 20px",border:`1px solid ${T.border}`,borderRadius:8}}>
+              <div style={{fontSize:11,fontWeight:600,color:T.muted,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Specifications</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:13}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Box material</span><span style={{color:T.ink}}>{BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Cabinets to ceiling</span><span style={{color:T.ink}}>{room.toCeiling?"Yes":"No"}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Crown moulding</span><span style={{color:T.ink}}>{room.crownMoulding?"Yes":"No"}</span></div>
+                {room.bulkheadHeight>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Bulkhead drop</span><span style={{color:T.ink}}>{room.bulkheadHeight}"</span></div>}
+                {(room.utilities||[]).length>0&&<div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${T.surface}`}}>
+                  <div style={{fontSize:11,fontWeight:600,color:T.muted,marginBottom:4}}>UTILITY LOCATIONS</div>
+                  {(room.utilities||[]).map(u=><div key={u.id} style={{color:T.muted,marginBottom:3}}>{u.icon} {u.label} — {u.wall} wall at {u.x}" from left{u.notes?` (${u.notes})`:""}</div>)}
+                </div>}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Wall elevations */}
         <div style={{marginBottom:40}}>
@@ -1197,10 +1970,15 @@ function PresentationView({cabs,room,project,activeWalls}){
             This proposal is valid for 30 days.<br/>
             Pricing subject to final site measurement and material availability.
           </div>
-          <div style={{textAlign:"right"}}>
-            <div style={{fontFamily:"'Lora',serif",fontSize:14,color:T.oak,fontWeight:600}}>CabinetWorks</div>
-            <div style={{fontSize:12,color:T.faint,marginTop:2}}>Signature: ______________________</div>
-            <div style={{fontSize:12,color:T.faint,marginTop:2}}>Date: ___________________________</div>
+          <div style={{textAlign:"right",display:"flex",alignItems:"center",gap:16}}>
+            {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:36,objectFit:"contain",opacity:0.85}}/>}
+            <div>
+              <div style={{fontFamily:"'Lora',serif",fontSize:14,color:T.oak,fontWeight:600}}>{companyProfile?.companyName||"CabinetWorks"}</div>
+              {companyProfile?.phone&&<div style={{fontSize:11,color:T.faint}}>{companyProfile.phone}</div>}
+              {companyProfile?.email&&<div style={{fontSize:11,color:T.faint}}>{companyProfile.email}</div>}
+              <div style={{fontSize:12,color:T.faint,marginTop:4}}>Signature: ______________________</div>
+              <div style={{fontSize:12,color:T.faint,marginTop:2}}>Date: ___________________________</div>
+            </div>
           </div>
         </div>
 
@@ -1210,17 +1988,118 @@ function PresentationView({cabs,room,project,activeWalls}){
   );
 }
 
+/* ─── COMPANY PROFILE MODAL ───────────────────────────────────────────────── */
+const PROFILE_KEY="cw_company_profile";
+function loadProfile(){try{return JSON.parse(localStorage.getItem(PROFILE_KEY))||null;}catch{return null;}}
+function saveProfile(p){localStorage.setItem(PROFILE_KEY,JSON.stringify(p));}
+
+function CompanyProfileModal({profile,setProfile,onClose,isFirstTime}){
+  const [draft,setDraft]=useState(profile||{companyName:"",contactName:"",phone:"",email:"",address:"",city:"",province:"",postal:"",licenseNum:"",logoDataUrl:""});
+  const logoInp=useRef();
+
+  const handleLogo=f=>{
+    if(!f)return;
+    const reader=new FileReader();
+    reader.onload=e=>setDraft(d=>({...d,logoDataUrl:e.target.result}));
+    reader.readAsDataURL(f);
+  };
+
+  const handleSave=()=>{
+    if(!draft.companyName.trim()){return;}
+    saveProfile(draft);
+    setProfile(draft);
+    onClose();
+  };
+
+  const IS={...IB,padding:"9px 12px"};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(30,18,8,0.55)",backdropFilter:"blur(4px)"}} onClick={isFirstTime?undefined:onClose}>
+      <div onClick={e=>e.stopPropagation()} className="fade-up" style={{background:"#fff",borderRadius:14,width:560,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(30,18,8,0.25)"}}>
+        {/* Header */}
+        <div style={{padding:"28px 32px 0",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <h2 style={{fontFamily:"'Lora',serif",fontSize:22,fontWeight:600,color:T.oak,marginBottom:4}}>
+              {isFirstTime?"Welcome to CabinetWorks":"Company profile"}
+            </h2>
+            <p style={{fontSize:14,color:T.muted}}>
+              {isFirstTime?"Set up your company info — this appears on every quote and proposal you send.":"Update your company details."}
+            </p>
+          </div>
+          {!isFirstTime&&<button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:T.faint,cursor:"pointer",lineHeight:1}}>×</button>}
+        </div>
+
+        <div style={{padding:"24px 32px 32px"}}>
+          {/* Logo */}
+          <div style={{marginBottom:20}}>
+            <Lbl>Company logo</Lbl>
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              <div onClick={()=>logoInp.current.click()} style={{width:80,height:80,borderRadius:10,border:`2px dashed ${draft.logoDataUrl?T.amber:T.border}`,cursor:"pointer",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",background:draft.logoDataUrl?"#fff":T.surface,flexShrink:0}}>
+                {draft.logoDataUrl
+                  ?<img src={draft.logoDataUrl} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+                  :<span style={{fontSize:28}}>🏢</span>
+                }
+              </div>
+              <div>
+                <Btn variant="outline" style={{padding:"6px 14px",fontSize:12}} onClick={()=>logoInp.current.click()}>
+                  {draft.logoDataUrl?"Change logo":"Upload logo"}
+                </Btn>
+                {draft.logoDataUrl&&<Btn variant="ghost" style={{padding:"6px 10px",fontSize:12,color:T.red}} onClick={()=>setDraft(d=>({...d,logoDataUrl:""}))}>Remove</Btn>}
+                <p style={{fontSize:12,color:T.faint,marginTop:4}}>PNG or JPG, shown on quotes & proposals</p>
+              </div>
+              <input ref={logoInp} type="file" accept="image/png,image/jpeg" style={{display:"none"}} onChange={e=>handleLogo(e.target.files[0])}/>
+            </div>
+          </div>
+
+          {/* Fields */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}}>
+            {[
+              ["Company name *","companyName","Your Shop Name"],
+              ["Your name","contactName","Jane Smith"],
+              ["Phone","phone","519-555-1234"],
+              ["Email","email","info@yourshop.ca"],
+              ["Address","address","123 Main St"],
+              ["City","city","Chatham"],
+              ["Province / State","province","ON"],
+              ["Postal / Zip","postal","N7L 1A1"],
+            ].map(([label,key,placeholder])=>(
+              <div key={key}>
+                <Lbl>{label}</Lbl>
+                <FI value={draft[key]} onChange={e=>setDraft(d=>({...d,[key]:e.target.value}))} placeholder={placeholder} style={IS}/>
+              </div>
+            ))}
+          </div>
+
+          <div style={{marginBottom:24}}>
+            <Lbl>License / registration number <span style={{color:T.faint,fontWeight:400,textTransform:"none"}}>(optional)</span></Lbl>
+            <FI value={draft.licenseNum} onChange={e=>setDraft(d=>({...d,licenseNum:e.target.value}))} placeholder="e.g. ON-12345" style={IS}/>
+          </div>
+
+          {/* Actions */}
+          <div style={{display:"flex",gap:12,justifyContent:"flex-end"}}>
+            {!isFirstTime&&<Btn variant="outline" onClick={onClose}>Cancel</Btn>}
+            <Btn onClick={handleSave} disabled={!draft.companyName.trim()}>
+              {isFirstTime?"Get started →":"Save changes"}
+            </Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── MAIN APP ────────────────────────────────────────────────────────────── */
 export default function App(){
   const [view,setView]=useState("setup");
   const [subView,setSubView]=useState("elevation");
-  const [project,setProject]=useState({name:"New Kitchen Project",client:""});
-  const [room,setRoom]=useState({width:144,depth:120,height:96,features:[]});
+  const [project,setProject]=useState({name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:""});
+  const [room,setRoom]=useState({width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply"});
   const [activeWalls,setActiveWalls]=useState(["South","West"]);
   const [cabs,setCabs]=useState([]);
   const [sel,setSel]=useState(null);
   const [wall,setWall]=useState("South");
   const [zoom,setZoom]=useState(1);
+  const [companyProfile,setCompanyProfile]=useState(()=>loadProfile());
+  const [showProfile,setShowProfile]=useState(()=>!loadProfile());
   const zoomIn=()=>setZoom(z=>Math.min(2,+(z+0.2).toFixed(1)));
   const zoomOut=()=>setZoom(z=>Math.max(0.4,+(z-0.2).toFixed(1)));
   const zoomReset=()=>setZoom(1);
@@ -1229,19 +2108,34 @@ export default function App(){
 
   const addCab=type=>{const c=makeCab(type,type==="island"?"Island":wall,cabs,ww);setCabs(p=>[...p,c]);setSel(c.id);};
   const applyRecs=rcs=>{
-    const nc=(rcs||[]).filter(r=>DEFS[r.type]&&(r.wall==="Island"||activeWalls.includes(r.wall))).map(r=>{
-      const rw=wallWidth(r.wall,room);
-      return{id:uid(),type:r.type,w:clamp(r.w||DEFS[r.type].w,9,96),h:clamp(r.h||DEFS[r.type].h,12,96),
-        d:clamp(r.d||DEFS[r.type].d,9,36),x:clamp(r.x||3,0,rw-(r.w||DEFS[r.type].w)),
-        ix:0,iy:0,wall:r.wall||activeWalls[0],material:r.material||"maple",
-        doorStyle:r.doorStyle||"Shaker",finish:r.finish||"Natural",notes:r.notes||"",useStandard:true};
-    });
-    setCabs(nc);
+    // Layout engine already produces complete cabinet objects with IDs
+    if(rcs&&rcs.length>0&&rcs[0].id){
+      setCabs(rcs);
+    } else {
+      // Fallback for old format
+      const nc=(rcs||[]).filter(r=>DEFS[r.type]&&(r.wall==="Island"||activeWalls.includes(r.wall))).map(r=>{
+        const rw=wallWidth(r.wall,room);
+        return{id:uid(),type:r.type,w:clamp(r.w||DEFS[r.type].w,9,96),h:clamp(r.h||DEFS[r.type].h,12,96),
+          d:clamp(r.d||DEFS[r.type].d,9,36),x:clamp(r.x||3,0,rw-(r.w||DEFS[r.type].w)),
+          ix:0,iy:0,wall:r.wall||activeWalls[0],material:r.material||"maple",
+          doorStyle:r.doorStyle||"Shaker",finish:r.finish||"Natural",notes:r.notes||"",useStandard:true};
+      });
+      setCabs(nc);
+    }
   };
   const updateCab=(id,ch)=>setCabs(p=>p.map(c=>c.id===id?{...c,...ch}:c));
   const deleteCab=id=>{setCabs(p=>p.filter(c=>c.id!==id));setSel(null);};
   const moveCab=(id,x)=>setCabs(p=>p.map(c=>c.id===id?{...c,x:clamp(x,0,ww-c.w)}:c));
   const moveIsland=(id,ix,iy)=>setCabs(p=>p.map(c=>c.id===id?{...c,ix,iy}:c));
+  const packTight=(targetWall,row)=>{
+    setCabs(prev=>{
+      const topack=prev.filter(c=>c.wall===targetWall&&DEFS[c.type]?.row===row).sort((a,b)=>a.x-b.x);
+      const rest=prev.filter(c=>!(c.wall===targetWall&&DEFS[c.type]?.row===row));
+      let cursor=0;
+      const packed=topack.map(c=>{const nc={...c,x:cursor};cursor+=c.w;return nc;});
+      return [...rest,...packed];
+    });
+  };
   const handleSetActiveWalls=walls=>{setActiveWalls(walls);if(!walls.includes(wall)&&walls.length>0)setWall(walls[0]);};
 
   const selCab=cabs.find(c=>c.id===sel);
@@ -1255,9 +2149,11 @@ export default function App(){
       {/* HEADER */}
       <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,height:58,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",boxShadow:"0 1px 4px rgba(44,31,14,0.06)"}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <div style={{fontFamily:"'Lora',serif",fontSize:18,fontWeight:600,color:T.oak}}>CabinetWorks</div>
+          {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:32,width:32,objectFit:"contain",borderRadius:4}}/>}
+          <div style={{fontFamily:"'Lora',serif",fontSize:18,fontWeight:600,color:T.oak}}>{companyProfile?.companyName||"CabinetWorks"}</div>
           <div style={{width:1,height:22,background:T.border}}/>
           <span style={{fontSize:14,color:T.muted}}>{project.name}</span>
+          <button onClick={()=>setShowProfile(true)} title="Company settings" style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:T.faint,padding:4,lineHeight:1,marginLeft:4}}>⚙</button>
         </div>
         <nav style={{display:"flex",gap:2,height:"100%",alignItems:"stretch"}}>
           {STEPS.map(s=>{
@@ -1283,7 +2179,13 @@ export default function App(){
                 <button key={v} onClick={()=>setSubView(v)} style={{padding:"0 16px",background:"none",border:"none",borderBottom:`3px solid ${subView===v?T.amber:"transparent"}`,color:subView===v?T.amber:T.muted,fontSize:13,fontWeight:subView===v?600:400,cursor:"pointer",transition:"all 0.15s"}}>{l}</button>
               ))}
               <div style={{flex:1}}/>
-              {/* Zoom controls */}
+              {/* Snap tools */}
+              {subView==="elevation"&&cabs.filter(c=>c.wall===wall).length>1&&(
+                <div style={{display:"flex",alignItems:"center",gap:4,marginRight:12,borderRight:`1px solid ${T.border}`,paddingRight:12}}>
+                  <button onClick={()=>packTight(wall,"lower")} title="Pack lower cabinets tight from left" style={{height:28,padding:"0 10px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:T.muted,fontWeight:600,whiteSpace:"nowrap"}}>Pack lower ◀▶</button>
+                  <button onClick={()=>packTight(wall,"upper")} title="Pack upper cabinets tight from left" style={{height:28,padding:"0 10px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:T.muted,fontWeight:600,whiteSpace:"nowrap"}}>Pack upper ◀▶</button>
+                </div>
+              )}
               <div style={{display:"flex",alignItems:"center",gap:4,marginRight:16}}>
                 <button onClick={zoomOut} style={{width:28,height:28,background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.muted}}>−</button>
                 <button onClick={zoomReset} style={{minWidth:46,height:28,background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:T.muted,fontFamily:"monospace"}}>{Math.round(zoom*100)}%</button>
@@ -1298,7 +2200,7 @@ export default function App(){
             <div style={{flex:1,overflow:"auto",padding:28}}>
               <div style={{transform:`scale(${zoom})`,transformOrigin:"top left",display:"inline-block"}}>
                 {subView==="elevation"
-                  ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]}/>
+                  ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]} utilities={room.utilities||[]}/>
                   :<FloorPlanCanvas cabs={cabs} room={room} sel={sel} onSel={setSel} onMoveIsland={moveIsland}/>
                 }
               </div>
@@ -1307,9 +2209,11 @@ export default function App(){
           <PropertiesPanel c={selCab} update={updateCab} del={deleteCab} activeWalls={[...activeWalls,"Island"]}/>
         </>}
         {view==="quote"&&<QuoteView cabs={cabs} project={project} setProject={setProject}/>}
-        {view==="present"&&<PresentationView cabs={cabs} room={room} project={project} activeWalls={activeWalls}/>}
-        {view==="order"&&<OrderSheet cabs={cabs} project={project} room={room}/>}
+        {view==="present"&&<PresentationView cabs={cabs} room={room} project={project} activeWalls={activeWalls} companyProfile={companyProfile}/>}
+        {view==="order"&&<OrderSheet cabs={cabs} project={project} room={room} companyProfile={companyProfile}/>}
       </div>
+      {/* Company profile modal */}
+      {showProfile&&<CompanyProfileModal profile={companyProfile} setProfile={setCompanyProfile} onClose={()=>setShowProfile(false)} isFirstTime={!companyProfile}/>}
     </div>
   );
 }
