@@ -387,7 +387,10 @@ const cabCode=(c)=>{
 // Filler strip codes
 const fillerCode=(w)=>w<=1?"SL":"BSP";
 
-const wallWidth=(wall,room)=>["East","West"].includes(wall)?room.depth:room.width;
+const wallWidth=(wall,room)=>{
+  if(room.wallLengths?.[wall]) return room.wallLengths[wall];
+  return["East","West"].includes(wall)?room.depth:room.width;
+};
 
 /* ─── LAYOUT ENGINE ───────────────────────────────────────────────────────── */
 // Deterministic cabinet placement — AI picks design decisions, this does the math.
@@ -1497,15 +1500,34 @@ CRITICAL RULES:
         )}
         </Section>
 
-        <Section num="B" title="Room dimensions & walls" desc="Set the room size and select which walls will have cabinets. This determines the layout shape the AI will design.">
+        <Section num="B" title="Room dimensions & walls" desc="Set overall room size, then customize each wall's length for L-shaped or irregular rooms. The floor plan preview updates live.">
         <Card style={{marginBottom:20}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:20}}>
-            {[["Room width","width","Wall to wall"],["Room depth","depth","Front to back"],["Ceiling height","height","Floor to ceiling"]].map(([l,k,hint])=>(
+            {[["Max width (S/N)","width","Longest horizontal wall"],["Max depth (E/W)","depth","Longest vertical wall"],["Ceiling height","height","Floor to ceiling"]].map(([l,k,hint])=>(
               <div key={k}>
                 <Lbl>{l}</Lbl>
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <FI type="number" value={room[k]} style={{width:90}} onChange={e=>setRoom(r=>({...r,[k]:parseInt(e.target.value)||96}))}/>
-                  <span style={{fontSize:14,color:T.muted}}>inches</span>
+                  <FI type="number" value={room[k]} style={{width:90}} onChange={e=>{
+                    const v=parseInt(e.target.value)||96;
+                    setRoom(r=>{
+                      const nr={...r,[k]:v};
+                      // Reset per-wall lengths that exceed the new max
+                      if(k==="width"){
+                        const wl={...(r.wallLengths||{})};
+                        if(wl.South&&wl.South>v) wl.South=v;
+                        if(wl.North&&wl.North>v) wl.North=v;
+                        nr.wallLengths=wl;
+                      }
+                      if(k==="depth"){
+                        const wl={...(r.wallLengths||{})};
+                        if(wl.East&&wl.East>v) wl.East=v;
+                        if(wl.West&&wl.West>v) wl.West=v;
+                        nr.wallLengths=wl;
+                      }
+                      return nr;
+                    });
+                  }}/>
+                  <span style={{fontSize:14,color:T.muted}}>in</span>
                   <span style={{fontSize:13,color:T.faint}}>({(room[k]/12).toFixed(1)}')</span>
                 </div>
                 <p style={{fontSize:12,color:T.faint,marginTop:4}}>{hint}</p>
@@ -1514,7 +1536,7 @@ CRITICAL RULES:
           </div>
         </Card>
 
-        <Card>
+        <Card style={{marginBottom:20}}>
           <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:6}}>Which walls have cabinet space?</h3>
           <p style={{fontSize:14,color:T.muted,marginBottom:16}}>Galley = 2 opposite · L-shape = 2 adjacent · U-shape = 3</p>
           <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
@@ -1523,6 +1545,34 @@ CRITICAL RULES:
               return <button key={w} onClick={()=>toggleWall(w)} style={{padding:"10px 22px",borderRadius:8,fontSize:14,fontWeight:600,background:isOn?T.amber:T.surface,border:`2px solid ${isOn?T.amber:T.border}`,color:isOn?"#fff":T.muted,cursor:"pointer",transition:"all 0.15s"}}>{isOn?"✓ ":""}{w} wall</button>;
             })}
           </div>
+
+          {/* Per-wall lengths for active walls */}
+          {activeWalls.length>0&&(
+            <div style={{marginBottom:16}}>
+              <Lbl style={{marginBottom:8}}>Wall lengths <span style={{fontWeight:400,textTransform:"none",color:T.faint}}>(customize for L-shaped or irregular rooms)</span></Lbl>
+              <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(activeWalls.length,4)},1fr)`,gap:10}}>
+                {activeWalls.map(w=>{
+                  const maxW=["East","West"].includes(w)?room.depth:room.width;
+                  const curW=room.wallLengths?.[w]||maxW;
+                  const isCustom=room.wallLengths?.[w]&&room.wallLengths[w]!==maxW;
+                  return(
+                    <div key={w} style={{padding:"10px 12px",background:isCustom?T.amberLight:T.bg,border:`1px solid ${isCustom?T.amber:T.border}`,borderRadius:8,transition:"all 0.2s"}}>
+                      <div style={{fontSize:13,fontWeight:600,color:isCustom?T.amber:T.muted,marginBottom:6}}>{w}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <input type="number" value={curW} onChange={e=>{
+                          const v=clamp(parseInt(e.target.value)||0,24,maxW);
+                          setRoom(r=>({...r,wallLengths:{...(r.wallLengths||{}), [w]:v===maxW?undefined:v}}));
+                        }} style={{...IB,width:70,textAlign:"center",padding:"7px 8px",fontSize:15,fontWeight:600}}/>
+                        <span style={{fontSize:12,color:T.faint}}>in ({(curW/12).toFixed(1)}')</span>
+                      </div>
+                      {isCustom&&<div style={{fontSize:10,color:T.amber,marginTop:4}}>Custom — max {maxW}"</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {activeWalls.length===0&&<p style={{fontSize:13,color:T.red}}>⚠ Select at least one wall.</p>}
           <Lbl style={{marginBottom:10}}>Room footprint preview</Lbl>
           <RoomFootprint room={room} activeWalls={activeWalls}/>
@@ -1598,14 +1648,34 @@ function RoomFootprint({room,activeWalls}){
   const W=room.width*sc,D=room.depth*sc,P=36;
   const wc=w=>activeWalls?.includes(w)?T.oak:T.border;
   const features=room.features||[];
+  // Per-wall lengths
+  const wS=wallWidth("South",room)*sc, wN=wallWidth("North",room)*sc;
+  const wE=wallWidth("East",room)*sc, wW=wallWidth("West",room)*sc;
+  const hasCustom=wS!==W||wN!==W||wE!==D||wW!==D;
   return(
     <svg width={W+P*2} height={D+P*2} style={{display:"block",borderRadius:8,background:T.wallBg}}>
-      {Array.from({length:Math.floor(room.width/12)+1},(_,i)=><line key={`v${i}`} x1={P+i*12*sc} y1={P} x2={P+i*12*sc} y2={P+D} stroke={T.border} strokeWidth={0.8}/>)}
-      {Array.from({length:Math.floor(room.depth/12)+1},(_,i)=><line key={`h${i}`} x1={P} y1={P+i*12*sc} x2={P+W} y2={P+i*12*sc} stroke={T.border} strokeWidth={0.8}/>)}
-      <line x1={P} y1={P+D} x2={P+W} y2={P+D} stroke={wc("South")} strokeWidth={4}/>
-      <line x1={P} y1={P} x2={P+W} y2={P} stroke={wc("North")} strokeWidth={4}/>
-      <line x1={P+W} y1={P} x2={P+W} y2={P+D} stroke={wc("East")} strokeWidth={4}/>
-      <line x1={P} y1={P} x2={P} y2={P+D} stroke={wc("West")} strokeWidth={4}/>
+      {/* Grid */}
+      {Array.from({length:Math.floor(room.width/12)+1},(_,i)=><line key={`v${i}`} x1={P+i*12*sc} y1={P} x2={P+i*12*sc} y2={P+D} stroke={T.border} strokeWidth={0.5}/>)}
+      {Array.from({length:Math.floor(room.depth/12)+1},(_,i)=><line key={`h${i}`} x1={P} y1={P+i*12*sc} x2={P+W} y2={P+i*12*sc} stroke={T.border} strokeWidth={0.5}/>)}
+      {/* Bounding rectangle (light) */}
+      {hasCustom&&<rect x={P} y={P} width={W} height={D} fill="none" stroke={T.border} strokeWidth={1} strokeDasharray="4,4"/>}
+      {/* Actual walls at their real lengths */}
+      {/* South: left to right at bottom */}
+      <line x1={P} y1={P+D} x2={P+wS} y2={P+D} stroke={wc("South")} strokeWidth={4}/>
+      {wS<W&&<line x1={P+wS} y1={P+D} x2={P+W} y2={P+D} stroke={T.border} strokeWidth={1} strokeDasharray="3,3"/>}
+      {/* North: left to right at top */}
+      <line x1={P} y1={P} x2={P+wN} y2={P} stroke={wc("North")} strokeWidth={4}/>
+      {wN<W&&<line x1={P+wN} y1={P} x2={P+W} y2={P} stroke={T.border} strokeWidth={1} strokeDasharray="3,3"/>}
+      {/* East: top to bottom on right */}
+      <line x1={P+W} y1={P+D} x2={P+W} y2={P+D-wE} stroke={wc("East")} strokeWidth={4}/>
+      {wE<D&&<line x1={P+W} y1={P+D-wE} x2={P+W} y2={P} stroke={T.border} strokeWidth={1} strokeDasharray="3,3"/>}
+      {/* West: top to bottom on left */}
+      <line x1={P} y1={P} x2={P} y2={P+wW} stroke={wc("West")} strokeWidth={4}/>
+      {wW<D&&<line x1={P} y1={P+wW} x2={P} y2={P+D} stroke={T.border} strokeWidth={1} strokeDasharray="3,3"/>}
+      {/* Step lines for L-shapes */}
+      {wN<W&&wE<D&&<line x1={P+wN} y1={P} x2={P+wN} y2={P+D-wE} stroke={T.faint} strokeWidth={1.5}/>}
+      {wN<W&&wE<D&&<line x1={P+wN} y1={P+D-wE} x2={P+W} y2={P+D-wE} stroke={T.faint} strokeWidth={1.5}/>}
+      {wS<W&&wW<D&&<line x1={P+wS} y1={P+D} x2={P+wS} y2={P+wW} stroke={T.faint} strokeWidth={1.5}/>}
       {/* Features on footprint */}
       {features.map(f=>{
         const fw=f.width*sc;
@@ -1614,16 +1684,22 @@ function RoomFootprint({room,activeWalls}){
         switch(f.wall){
           case"South":fx=P+f.x*sc;fy=P+D-th;fw2=fw;fh2=th;break;
           case"North":fx=P+f.x*sc;fy=P;fw2=fw;fh2=th;break;
-          case"East":fx=P+W-th;fy=P+f.x*sc;fw2=th;fh2=fw;break;
+          case"East":fx=P+W-th;fy=P+D-f.x*sc-fw;fw2=th;fh2=fw;break;
           case"West":fx=P;fy=P+f.x*sc;fw2=th;fh2=fw;break;
           default:return null;
         }
         return <rect key={f.id} x={fx} y={fy} width={fw2} height={fh2} fill={f.type==="window"?T.winFill:"#EDE5D8"} stroke={f.type==="window"?T.winStroke:T.faint} strokeWidth={1.5}/>;
       })}
-      {[["South",P+W/2,P+D+20,0],["North",P+W/2,P-12,0],["East",P+W+20,P+D/2,90],["West",P-20,P+D/2,-90]].map(([w,x,y,rot])=>(
-        <text key={w} x={x} y={y} textAnchor="middle" fill={wc(w)} fontSize={11} fontFamily="DM Sans" fontWeight={activeWalls?.includes(w)?600:400} transform={rot?`rotate(${rot} ${x} ${y})`:undefined}>{w}</text>
+      {/* Wall labels with actual lengths */}
+      {[
+        ["South",P+wS/2,P+D+20,0,wallWidth("South",room)],
+        ["North",P+wN/2,P-12,0,wallWidth("North",room)],
+        ["East",P+W+20,P+D-wE/2,90,wallWidth("East",room)],
+        ["West",P-20,P+wW/2,-90,wallWidth("West",room)],
+      ].map(([w,x,y,rot,len])=>(
+        <text key={w} x={x} y={y} textAnchor="middle" fill={wc(w)} fontSize={11} fontFamily="DM Sans" fontWeight={activeWalls?.includes(w)?600:400} transform={rot?`rotate(${rot} ${x} ${y})`:undefined}>{w}{len!==room.width&&len!==room.depth?` ${len}"`:""}</text>
       ))}
-      <text x={P+W/2} y={P+D/2+5} textAnchor="middle" fill={T.faint} fontSize={13} fontFamily="DM Sans">{((room.width/12)*(room.depth/12)).toFixed(0)} sq ft</text>
+      <text x={P+W/2} y={P+D/2+5} textAnchor="middle" fill={T.faint} fontSize={13} fontFamily="DM Sans">{room.width}"×{room.depth}"</text>
     </svg>
   );
 }
