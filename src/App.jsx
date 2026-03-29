@@ -2858,8 +2858,10 @@ function QuoteView({cabs,setCabs,project,setProject,room,activeWalls}){
   const hwSub=hwItems.reduce((s,i)=>s+i.price,0);
   const ctItems=calcCountertopPrice(room,cabs);
   const ctSub=ctItems.reduce((s,i)=>s+i.price,0);
-  const install=cabs.length*25;
-  const sub=cabLine+trimSub+hwSub+ctSub+install;
+  const rate=project.installRate??25;
+  const install=cabs.length*rate;
+  // Package price includes trim, hardware, countertops — don't double-count
+  const sub=usePkg?(cabLine+install):(cabLine+trimSub+hwSub+ctSub+install);
   const tax=Math.round(sub*0.08),total=sub+tax;
   const IS={...IB,padding:"7px 10px"};
   const updCabPrice=(id,price)=>setCabs(p=>p.map(c=>c.id===id?{...c,priceOverride:price}:c));
@@ -2879,17 +2881,26 @@ function QuoteView({cabs,setCabs,project,setProject,room,activeWalls}){
           ?<Card><p style={{color:T.faint,textAlign:"center",padding:"40px 0",fontSize:15}}>No cabinets yet — go to Design to add some.</p></Card>
           :<>
             {/* Pricing mode */}
-            <Card style={{marginBottom:16,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
-              <div style={{fontSize:13,color:T.muted}}>
-                <strong style={{color:T.ink}}>Pricing mode:</strong> {usePkg?"Package price":"Itemized"}{hasOverrides&&!usePkg?" (some overrides)":""}
-              </div>
-              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:usePkg?T.amberLight:T.surface,border:`1px solid ${usePkg?T.amber:T.border}`,borderRadius:6}}>
-                  <span style={{fontSize:12,color:T.muted}}>Package price $</span>
-                  <input type="number" value={pkg||""} placeholder="—" onChange={e=>{const v=parseFloat(e.target.value);setProject(p=>({...p,packagePrice:v>0?v:undefined}));}} style={{...IS,width:90,textAlign:"center",padding:"4px 6px",fontWeight:600}}/>
+            <Card style={{marginBottom:16,padding:"14px 18px",display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                <div style={{fontSize:13,color:T.muted}}>
+                  <strong style={{color:T.ink}}>Pricing mode:</strong> {usePkg?"Package price":"Itemized"}{hasOverrides&&!usePkg?" (some overrides)":""}
                 </div>
-                {usePkg&&<button onClick={()=>setProject(p=>({...p,packagePrice:undefined}))} style={{fontSize:11,color:T.red,background:"none",border:`1px solid ${T.border}`,borderRadius:4,padding:"4px 8px",cursor:"pointer"}}>Clear package</button>}
-                {hasOverrides&&!usePkg&&<button onClick={clearAllOverrides} style={{fontSize:11,color:T.faint,background:"none",border:`1px solid ${T.border}`,borderRadius:4,padding:"4px 8px",cursor:"pointer"}}>Reset all to estimates</button>}
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:usePkg?T.amberLight:T.surface,border:`1px solid ${usePkg?T.amber:T.border}`,borderRadius:6}}>
+                    <span style={{fontSize:12,color:T.muted}}>Package price $</span>
+                    <input type="number" value={pkg||""} placeholder="—" onChange={e=>{const v=parseFloat(e.target.value);setProject(p=>({...p,packagePrice:v>0?v:undefined}));}} style={{...IS,width:90,textAlign:"center",padding:"4px 6px",fontWeight:600}}/>
+                  </div>
+                  {usePkg&&<button onClick={()=>setProject(p=>({...p,packagePrice:undefined}))} style={{fontSize:11,color:T.red,background:"none",border:`1px solid ${T.border}`,borderRadius:4,padding:"4px 8px",cursor:"pointer"}}>Clear package</button>}
+                  {hasOverrides&&!usePkg&&<button onClick={clearAllOverrides} style={{fontSize:11,color:T.faint,background:"none",border:`1px solid ${T.border}`,borderRadius:4,padding:"4px 8px",cursor:"pointer"}}>Reset all to estimates</button>}
+                </div>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:12,color:T.muted}}>Install rate $/cabinet</span>
+                  <input type="number" value={rate} onChange={e=>setProject(p=>({...p,installRate:parseFloat(e.target.value)||0}))} style={{...IS,width:70,textAlign:"center",padding:"4px 6px"}} step="5" min="0"/>
+                </div>
+                {usePkg&&<span style={{fontSize:11,color:T.amber,fontStyle:"italic"}}>Package includes cabinets, trim, hardware, and countertops</span>}
               </div>
             </Card>
 
@@ -2930,8 +2941,8 @@ function QuoteView({cabs,setCabs,project,setProject,room,activeWalls}){
               )}
             </Card>
 
-            {/* Trim & accessories table */}
-            {trimItems.length>0&&(
+            {/* Trim & accessories table — only in itemized mode */}
+            {!usePkg&&trimItems.length>0&&(
               <Card style={{marginBottom:16,padding:0,overflow:"hidden"}}>
                 <div style={{padding:"12px 14px",background:T.surfaceAlt,borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:600,color:T.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>Trim & accessories</div>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
@@ -2946,8 +2957,8 @@ function QuoteView({cabs,setCabs,project,setProject,room,activeWalls}){
               </Card>
             )}
 
-            {/* Hardware table */}
-            {hwItems.length>0&&(
+            {/* Hardware table — only in itemized mode */}
+            {!usePkg&&hwItems.length>0&&(
               <Card style={{marginBottom:16,padding:0,overflow:"hidden"}}>
                 <div style={{padding:"12px 14px",background:T.surfaceAlt,borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:600,color:T.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>Hardware</div>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
@@ -2962,8 +2973,8 @@ function QuoteView({cabs,setCabs,project,setProject,room,activeWalls}){
               </Card>
             )}
 
-            {/* Countertop table */}
-            {ctItems.length>0&&(
+            {/* Countertop table — only in itemized mode */}
+            {!usePkg&&ctItems.length>0&&(
               <Card style={{marginBottom:16,padding:0,overflow:"hidden"}}>
                 <div style={{padding:"12px 14px",background:T.surfaceAlt,borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:600,color:T.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>Countertops</div>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
@@ -2981,11 +2992,12 @@ function QuoteView({cabs,setCabs,project,setProject,room,activeWalls}){
             {/* Totals */}
             <div style={{display:"flex",justifyContent:"flex-end",marginBottom:24}}>
               <Card style={{width:340,padding:20}}>
-                {[[usePkg?"Cabinetry (package)":"Cabinetry"+(hasOverrides?" (adjusted)":""),cabLine],
-                  ...(trimSub>0?[["Trim & accessories",trimSub]]:[]),
-                  ...(hwSub>0?[["Hardware",hwSub]]:[]),
-                  ...(ctSub>0?[["Countertops",ctSub]]:[]),
-                  ["Installation ("+cabs.length+" × $25)",install],
+                {[
+                  [usePkg?"Cabinet package (incl. trim, hardware, countertops)":"Cabinetry"+(hasOverrides?" (adjusted)":""),cabLine],
+                  ...(!usePkg&&trimSub>0?[["Trim & accessories",trimSub]]:[]),
+                  ...(!usePkg&&hwSub>0?[["Hardware",hwSub]]:[]),
+                  ...(!usePkg&&ctSub>0?[["Countertops",ctSub]]:[]),
+                  [`Installation (${cabs.length} × $${rate})`,install],
                   ["Tax (8%)",tax]].map(([l,v])=>(
                   <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${T.border}`,fontSize:14}}><span style={{color:T.muted}}>{l}</span><span>${v.toLocaleString()}</span></div>
                 ))}
@@ -3158,7 +3170,7 @@ function OrderSheet({cabs,project,room,companyProfile,activeWalls}){
 
         {cabs.length>0&&(
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:24,paddingTop:20,borderTop:`1px solid ${T.border}`}}>
-            <span style={{fontSize:15,color:T.muted}}>{cabs.length} unit{cabs.length!==1?"s":""}  — Est. ${(totalPrice+trimTotal+hwTotal+ctTotal).toLocaleString()}</span>
+            <span style={{fontSize:15,color:T.muted}}>{cabs.length} unit{cabs.length!==1?"s":""}  — Est. ${(project.packagePrice>0?totalPrice:(totalPrice+trimTotal+hwTotal+ctTotal)).toLocaleString()}</span>
             <Btn onClick={()=>window.print()}>🖨 Print / Export PDF</Btn>
           </div>
         )}
@@ -3170,16 +3182,19 @@ function OrderSheet({cabs,project,room,companyProfile,activeWalls}){
 /* ─── CLIENT PRESENTATION VIEW ───────────────────────────────────────────── */
 function PresentationView({cabs,room,project,activeWalls,companyProfile}){
   const cabEst=cabs.reduce((s,c)=>s+getPrice(c),0);
-  const cabTotal=(project.packagePrice>0)?project.packagePrice:cabEst;
+  const usePkg=project.packagePrice>0;
+  const cabTotal=usePkg?project.packagePrice:cabEst;
   const trimItems=calcTrimPrice(room,cabs,activeWalls||[]);
   const trimTotal=trimItems.reduce((s,i)=>s+i.price,0);
   const hwItems=calcHardwarePrice(room,cabs);
   const hwTotal=hwItems.reduce((s,i)=>s+i.price,0);
   const ctItems=calcCountertopPrice(room,cabs);
   const ctTotal=ctItems.reduce((s,i)=>s+i.price,0);
-  const install=cabs.length*25;
-  const tax=Math.round((cabTotal+trimTotal+hwTotal+ctTotal+install)*0.08);
-  const total=cabTotal+trimTotal+hwTotal+ctTotal+install;
+  const rate=project.installRate??25;
+  const install=cabs.length*rate;
+  const extras=usePkg?0:(trimTotal+hwTotal+ctTotal);
+  const tax=Math.round((cabTotal+extras+install)*0.08);
+  const total=cabTotal+extras+install;
   const date=new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
   const features=room.features||[];
 
@@ -3502,11 +3517,12 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
               marginBottom:16,paddingBottom:12,borderBottom:`1px solid #E8C888`}}>
               Investment Summary
             </div>
-            {[["Cabinet supply",cabTotal],
-              ...(trimTotal>0?trimItems.map(i=>[i.label+" ("+i.qty+")",i.price]):[]),
-              ...(hwTotal>0?[["Hardware",hwTotal]]:[]),
-              ...(ctTotal>0?[["Countertops",ctTotal]]:[]),
-              ["Installation ($25/cabinet)",install]].map(([l,v])=>(
+            {[
+              [usePkg?"Cabinet package (incl. trim, hardware, countertops)":"Cabinet supply",cabTotal],
+              ...(!usePkg&&trimTotal>0?trimItems.map(i=>[i.label+" ("+i.qty+")",i.price]):[]),
+              ...(!usePkg&&hwTotal>0?[["Hardware",hwTotal]]:[]),
+              ...(!usePkg&&ctTotal>0?[["Countertops",ctTotal]]:[]),
+              [`Installation (${cabs.length} × $${rate})`,install]].map(([l,v])=>(
               <div key={l} style={{display:"flex",justifyContent:"space-between",
                 marginBottom:8,fontSize:14}}>
                 <span style={{color:T.muted}}>{l}</span>
@@ -3571,7 +3587,7 @@ function saveProjectList(list){localStorage.setItem(PROJECTS_KEY,JSON.stringify(
 function loadCurrentSession(){try{return JSON.parse(localStorage.getItem(CURRENT_KEY))||null;}catch{return null;}}
 function saveCurrentSession(data){localStorage.setItem(CURRENT_KEY,JSON.stringify(data));}
 
-const DEFAULT_PROJECT={name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:""};
+const DEFAULT_PROJECT={name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:"",installRate:25};
 const DEFAULT_ROOM={width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",trim:{...DEFAULT_TRIM},hardware:{...DEFAULT_HARDWARE},countertop:{...DEFAULT_COUNTERTOP}};
 const DEFAULT_WALLS=["South","West"];
 
