@@ -143,8 +143,6 @@ function calcTrimPrice(room,cabs,activeWalls){
 const APPLIANCE_TYPES=[
   {key:"fridge",label:"Refrigerator",defW:36,defH:70,defD:30},
   {key:"range",label:"Range / Stove",defW:30,defH:36,defD:25},
-  {key:"cooktop",label:"Cooktop (insert)",defW:30,defH:4,defD:21},
-  {key:"wallOven",label:"Wall Oven",defW:30,defH:50,defD:24},
   {key:"dishwasher",label:"Dishwasher",defW:24,defH:34,defD:24},
   {key:"microwave",label:"Microwave / OTR",defW:30,defH:17,defD:15},
   {key:"rangeHood",label:"Range Hood",defW:30,defH:6,defD:20},
@@ -660,23 +658,15 @@ function buildChecklist(room,activeWalls,cabs,tri){
   const hasFacing=activeWalls.includes("South")&&activeWalls.includes("North");
   if(hasFacing){
     const aisle=room.depth-48; // two 24" deep cabinets
-    checks.push({rule:"Primary aisle clearance",description:'42" min between facing surfaces',recommended:'48"',met:aisle>=42,
-      tip:"This is the walkway between two rows of cabinets. Too narrow and two people can't work at the same time — appliance doors will collide.",
-      fix:aisle<42?`Your aisle is only ${aisle}". Consider reducing cabinet depth to 21" on one side, or removing one row of cabinets.`:""});
+    checks.push({rule:"Primary aisle clearance",description:'42" min between facing surfaces',recommended:'48"',met:aisle>=42});
   } else {
-    checks.push({rule:"Primary aisle clearance",description:'42" min between facing surfaces',recommended:'48"',met:true,
-      tip:"With cabinets on non-opposing walls, aisle clearance is not a concern in this layout.",fix:""});
+    checks.push({rule:"Primary aisle clearance",description:'42" min between facing surfaces',recommended:'48"',met:true});
   }
-  checks.push({rule:"Counter height",description:'36" floor to countertop (34.5" cab + 1.5" top)',recommended:'36"',met:true,
-    tip:"Standard counter height is 36\" (34.5\" cabinet + 1.5\" countertop). This is ergonomically designed for most adults.",fix:""});
-  checks.push({rule:"Upper cabinet elevation",description:'18" min between countertop and upper bottom',recommended:'18"',met:true,
-    tip:"The gap between your countertop and the bottom of uppers. Too little and you lose workspace; too much wastes wall space and makes upper shelves unreachable.",fix:""});
+  checks.push({rule:"Counter height",description:'36" floor to countertop (34.5" cab + 1.5" top)',recommended:'36"',met:true});
+  checks.push({rule:"Upper cabinet elevation",description:'18" min between countertop and upper bottom',recommended:'18"',met:true});
   // Work triangle
   if(tri){
-    const triTotal=tri.total||0;
-    checks.push({rule:"Work triangle perimeter",description:'144"–312" total',recommended:'<264"',met:tri.valid,
-      tip:"The total walking distance between sink, range, and fridge. Too short and the kitchen feels cramped; too long and you waste steps on every meal.",
-      fix:!tri.valid?(triTotal>312?"Your triangle is too large — appliances are too spread out. Try moving the fridge closer to the cooking zone, or consider placing more appliances on the same wall.":"Your triangle is very tight. If possible, spread your appliances slightly further apart for comfort."):""});
+    checks.push({rule:"Work triangle perimeter",description:'144"–312" total',recommended:'<264"',met:tri.valid});
   }
   // Sink landing — check if there's a cab on each side of sink
   const sinkCab=cabs.find(c=>c.notes&&c.notes.toLowerCase().includes("sink"));
@@ -685,10 +675,7 @@ function buildChecklist(room,activeWalls,cabs,tri){
     const leftNeighbor=sameWallLowers.find(c=>Math.abs(c.x+c.w-sinkCab.x)<2&&c.id!==sinkCab.id);
     const rightNeighbor=sameWallLowers.find(c=>Math.abs(c.x-(sinkCab.x+sinkCab.w))<2&&c.id!==sinkCab.id);
     const leftW=leftNeighbor?leftNeighbor.w:0,rightW=rightNeighbor?rightNeighbor.w:0;
-    const met=leftW>=18&&rightW>=18;
-    checks.push({rule:"Sink landing space",description:`${leftW}" one side, ${rightW}" other`,recommended:'24"/18"',met,
-      tip:"You need counter space on both sides of the sink — one side for dirty dishes and prep, the other for drying or clean dish staging.",
-      fix:!met?`${leftW<18?"The left side of your sink only has "+leftW+"\" of counter. ":""}${rightW<18?"The right side only has "+rightW+"\". ":""}Widen the adjacent cabinet or swap it for a larger one to get at least 18" on each side.`:""});
+    checks.push({rule:"Sink landing space",description:'24" one side, 18" other',recommended:'24"/18"',met:leftW>=18&&rightW>=18});
   }
   // Range landing
   const rangeCab=cabs.find(c=>c.notes&&c.notes.toLowerCase().includes("range"));
@@ -696,19 +683,13 @@ function buildChecklist(room,activeWalls,cabs,tri){
     const sameWallLowers=cabs.filter(c=>c.wall===rangeCab.wall&&c.type==="base").sort((a,b)=>a.x-b.x);
     const leftN=sameWallLowers.find(c=>Math.abs(c.x+c.w-rangeCab.x)<2&&c.id!==rangeCab.id);
     const rightN=sameWallLowers.find(c=>Math.abs(c.x-(rangeCab.x+rangeCab.w))<2&&c.id!==rangeCab.id);
-    const lw=leftN?leftN.w:0,rw=rightN?rightN.w:0;
-    const met=(lw>=12)&&(rw>=12)&&(lw>=15||rw>=15);
-    checks.push({rule:"Range landing space",description:`${lw}" one side, ${rw}" other`,recommended:'15"/12"',met,
-      tip:"You need a safe place to set hot pans immediately beside the range — at least 15\" on one side and 12\" on the other. This is a safety issue, not just convenience.",
-      fix:!met?`${lw<12?"Left side has only "+lw+"\" — ":""}${rw<12?"Right side has only "+rw+"\" — ":""}${(lw>=12&&rw>=12&&lw<15&&rw<15)?"Neither side reaches 15\". ":""}Widen the cabinet next to the range, or move the range so it isn't against a wall or appliance.`:""});
+    checks.push({rule:"Range landing space",description:'12" one side, 15" other',recommended:'15"/12"',met:(leftN?leftN.w>=12:false)&&(rightN?rightN.w>=12:false)});
   }
   // Island clearance
   const island=cabs.find(c=>c.type==="island");
   if(island){
     const clearance=Math.min(room.width-island.w,room.depth-island.d)/2;
-    checks.push({rule:"Island clearance",description:'42" min on all sides',recommended:'48"',met:clearance>=42,
-      tip:"Space around the island determines whether people can walk past while someone is working at it. Appliance doors (dishwasher, oven) need room to open fully.",
-      fix:clearance<42?`Current clearance is about ${Math.round(clearance)}". Consider a narrower island, or removing it — a peninsula against one wall may work better in this space.`:""});
+    checks.push({rule:"Island clearance",description:'42" min on all sides',recommended:'48"',met:clearance>=42});
   }
   return checks;
 }
@@ -1434,14 +1415,12 @@ Return ONLY valid JSON — no markdown:
               <Lbl style={{marginBottom:16}}>NKBA compliance checklist</Lbl>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {recs.bestPractices?.map((bp,i)=>(
-                  <div key={i} style={{display:"flex",gap:12,padding:"14px 16px",background:bp.met?T.greenLight:T.redLight,border:`1px solid ${bp.met?"#C0DDB8":"#e0b8b3"}`,borderRadius:8}}>
+                  <div key={i} style={{display:"flex",gap:12,padding:"12px 14px",background:bp.met?T.greenLight:T.redLight,border:`1px solid ${bp.met?"#C0DDB8":"#e0b8b3"}`,borderRadius:8}}>
                     <span style={{fontSize:18,flexShrink:0}}>{bp.met?"✓":"⚠"}</span>
                     <div>
                       <div style={{fontSize:14,fontWeight:600,color:bp.met?T.green:T.red,marginBottom:3}}>{bp.rule}</div>
                       <div style={{fontSize:13,color:T.muted,lineHeight:1.5}}>{bp.description}</div>
                       <div style={{fontSize:12,color:bp.met?T.green:T.red,marginTop:4,fontWeight:500}}>Recommended: {bp.recommended}</div>
-                      {bp.tip&&<div style={{fontSize:12,color:T.text,marginTop:8,lineHeight:1.6,fontStyle:"italic",borderTop:`1px solid ${bp.met?"#C0DDB8":"#e0b8b3"}`,paddingTop:8}}>{bp.tip}</div>}
-                      {!bp.met&&bp.fix&&<div style={{fontSize:12,color:T.red,marginTop:6,lineHeight:1.6,fontWeight:500,background:"rgba(139,58,42,0.08)",padding:"8px 10px",borderRadius:6}}>💡 {bp.fix}</div>}
                     </div>
                   </div>
                 ))}
@@ -1597,38 +1576,25 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
         const tkH=isLower?TOEKICK*ES:0, bodyH=ch-tkH, nD=cw>=27*ES?2:1, dw=cw/nD;
         // appliance visuals only make sense on lower / base cabinets
         const isSink=isLower&&notesHas(c,"sink"), isRange=isLower&&(notesHas(c,"range")||notesHas(c,"stove")), isFridge=isLower&&(notesHas(c,"fridge")||notesHas(c,"refrigerator"));
-        const isWallOven=notesHas(c,"wall oven")||notesHas(c,"walloven");
         return(
           <g key={c.id} style={{cursor:"grab"}} onPointerDown={e=>onPD(e,c.id)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
             <rect x={cx} y={cyy} width={cw} height={bodyH}
-              fill={isFridge?"#D4C8B8":isRange?"#C8A888":isWallOven?"#C8A888":bf}
+              fill={isFridge?"#D4C8B8":isRange?"#C8A888":bf}
               stroke={isOverlap?"#CC4422":isSel?T.amber:de} strokeWidth={isSel||isOverlap?2:1} rx={1}/>
             {isLower&&<rect x={cx} y={cyy+bodyH} width={cw} height={tkH} fill={tf} rx={0}/>}
 
-            {/* Range/stove front — oven door with glass window + handle */}
+            {/* Range/stove visual — 4 burner circles, fixed size */}
             {isRange&&(
               <g>
-                {/* Oven door */}
-                <rect x={cx+4} y={cyy+bodyH*0.08} width={cw-8} height={bodyH*0.84} fill="#D4B898" stroke={de} strokeWidth={0.8} rx={2}/>
-                {/* Glass window */}
-                <rect x={cx+cw*0.15} y={cyy+bodyH*0.14} width={cw*0.7} height={bodyH*0.32} fill="#2A2018" fillOpacity={0.3} stroke="#9A8060" strokeWidth={0.8} rx={2}/>
-                {/* Handle bar */}
-                <line x1={cx+cw*0.2} y1={cyy+bodyH*0.54} x2={cx+cw*0.8} y2={cyy+bodyH*0.54} stroke="#8A7060" strokeWidth={3} strokeLinecap="round"/>
-                {/* Bottom drawer/broiler */}
-                <rect x={cx+4} y={cyy+bodyH*0.72} width={cw-8} height={bodyH*0.18} fill="#D0B490" stroke={de} strokeWidth={0.6} rx={1}/>
-                <line x1={cx+cw*0.35} y1={cyy+bodyH*0.81} x2={cx+cw*0.65} y2={cyy+bodyH*0.81} stroke="#9A8060" strokeWidth={2} strokeLinecap="round"/>
-              </g>
-            )}
-
-            {/* Wall oven front — same oven door style in a tall cab */}
-            {isWallOven&&!isRange&&(
-              <g>
-                <rect x={cx+4} y={cyy+bodyH*0.05} width={cw-8} height={bodyH*0.55} fill="#D4B898" stroke={de} strokeWidth={0.8} rx={2}/>
-                <rect x={cx+cw*0.15} y={cyy+bodyH*0.1} width={cw*0.7} height={bodyH*0.22} fill="#2A2018" fillOpacity={0.3} stroke="#9A8060" strokeWidth={0.8} rx={2}/>
-                <line x1={cx+cw*0.2} y1={cyy+bodyH*0.38} x2={cx+cw*0.8} y2={cyy+bodyH*0.38} stroke="#8A7060" strokeWidth={3} strokeLinecap="round"/>
-                {/* Lower section — storage doors */}
-                <rect x={cx+4} y={cyy+bodyH*0.63} width={cw-8} height={bodyH*0.3} fill={df} stroke={de} strokeWidth={0.8} rx={1}/>
-                <rect x={cx+cw/2-4} y={cyy+bodyH*0.72} width={8} height={14} fill={hn} rx={3}/>
+                {(()=>{
+                  const br=6, gap=Math.min(cw*0.22, 16);
+                  return [[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=>(
+                    <g key={i}>
+                      <circle cx={cx+cw/2+ox*gap} cy={cyy+bodyH/2+oy*gap} r={br} fill="none" stroke="#8A7060" strokeWidth={1.5}/>
+                      <circle cx={cx+cw/2+ox*gap} cy={cyy+bodyH/2+oy*gap} r={br*0.35} fill="#A88070"/>
+                    </g>
+                  ));
+                })()}
               </g>
             )}
 
@@ -1640,8 +1606,8 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
               </g>
             )}
 
-            {/* Front layout (doors/drawers) — only if not range, fridge, or wall oven */}
-            {!isRange&&!isFridge&&!isWallOven&&(()=>{
+            {/* Front layout (doors/drawers) — only if not range or fridge */}
+            {!isRange&&!isFridge&&(()=>{
               const fl=c.frontLayout||"doors";
               const pad=2,innerW=cw-pad*2,innerH=bodyH-pad*2;
               const drawerGap=3;
@@ -1886,13 +1852,11 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland,onMoveWallCab}){
         const isCorner=!!c.corner;
         const isLowerCab=!isUpper&&!isCorner;
         const isSink=isLowerCab&&notesHas(c,"sink"),isRange=isLowerCab&&(notesHas(c,"range")||notesHas(c,"stove")),isFridge=isLowerCab&&(notesHas(c,"fridge")||notesHas(c,"refrigerator"));
-        const isCooktop=isLowerCab&&notesHas(c,"cooktop");
-        const isWallOven=notesHas(c,"wall oven")||notesHas(c,"walloven");
-        const fill=isCorner?"#B8A070":isIsland?"#C4A870":isUpper?"#D4CCBC":isFridge?"#C8BEB0":(isRange||isCooktop)?"#C4A888":isWallOven?"#C4A888":"#C8B898";
+        const fill=isCorner?"#B8A070":isIsland?"#C4A870":isUpper?"#D4CCBC":isFridge?"#C8BEB0":isRange?"#C4A888":"#C8B898";
         // label
         const cornerLbl=c.type==="corner_base"?"LS":c.type==="blind_base"?"BC":c.type==="corner_upper"?"CU":c.type==="blind_upper"?"BU":c.type==="corner_pantry"?"CP":"";
-        const lbl=isCorner?cornerLbl:isSink?"SINK":isRange?"RANGE":isCooktop?"CTOP":isFridge?"FRIDGE":isWallOven?"OVEN":`${c.w}"`;
-        const lblColor=isCorner?"#6A5030":isSink?"#5A8898":(isRange||isCooktop)?"#7A5030":isFridge?"#607888":isWallOven?"#7A5030":isSel?T.amber:T.muted;
+        const lbl=isCorner?cornerLbl:isSink?"SINK":isRange?"RANGE":isFridge?"FRIDGE":`${c.w}"`;
+        const lblColor=isCorner?"#6A5030":isSink?"#5A8898":isRange?"#7A5030":isFridge?"#607888":isSel?T.amber:T.muted;
         return(
           <g key={c.id} style={{cursor:isCorner?"pointer":"grab"}} onPointerDown={e=>onPD(e,c)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
             <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} stroke={isSel?T.amber:T.borderDark} strokeWidth={isSel?2:1} strokeDasharray={isUpper?"3,2":"none"} rx={2}/>
@@ -1904,13 +1868,13 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland,onMoveWallCab}){
             })()}
             {/* Sink: small basin rectangle */}
             {isSink&&r.w>20&&r.h>14&&<rect x={r.x+r.w*0.2} y={r.y+r.h*0.2} width={r.w*0.6} height={r.h*0.55} fill="#8AAABB" stroke="#6A8898" strokeWidth={1} rx={2}/>}
-            {/* Range/cooktop: 4 small burner dots (top-down view) */}
-            {(isRange||isCooktop)&&r.w>20&&r.h>14&&[[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=>(
+            {/* Range: 4 small burner dots */}
+            {isRange&&r.w>20&&r.h>14&&[[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=>(
               <circle key={i} cx={r.x+r.w/2+ox*Math.min(r.w*0.18,6)} cy={r.y+r.h/2+oy*Math.min(r.h*0.22,6)} r={Math.min(r.w,r.h)*0.09} fill="none" stroke="#8A7060" strokeWidth={1}/>
             ))}
             {/* Fridge: thin handle line */}
             {isFridge&&r.w>10&&<line x1={r.x+r.w*0.75} y1={r.y+r.h*0.25} x2={r.x+r.w*0.75} y2={r.y+r.h*0.75} stroke="#9A8878" strokeWidth={2} strokeLinecap="round"/>}
-            <text x={r.x+r.w/2} y={r.y+r.h/2+(isSink||isRange||isCooktop||isFridge||isWallOven?r.h*0.42:4)} textAnchor="middle" fill={lblColor} fontSize={9} fontFamily="DM Sans" fontWeight={600}>{lbl}</text>
+            <text x={r.x+r.w/2} y={r.y+r.h/2+(isSink||isRange||isFridge?r.h*0.42:4)} textAnchor="middle" fill={lblColor} fontSize={9} fontFamily="DM Sans" fontWeight={600}>{lbl}</text>
             {isCorner&&<text x={r.x+r.w/2} y={r.y+r.h/2+12} textAnchor="middle" fill="#A08050" fontSize={7} fontFamily="DM Sans">{c.corner}</text>}
             {isIsland&&<text x={r.x+r.w/2} y={r.y+r.h/2+14} textAnchor="middle" fill={T.faint} fontSize={8} fontFamily="DM Sans">drag</text>}
           </g>
@@ -2156,7 +2120,7 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk}){
       <div style={{marginBottom:16}}>
         <Lbl>Notes</Lbl>
         <input type="text" value={c.notes} onChange={e=>update(c.id,{notes:e.target.value})} style={{...IS,width:"100%"}} placeholder="e.g. sink base, range, fridge"/>
-        <p style={{fontSize:11,color:T.faint,marginTop:4}}>Type "sink", "range", "cooktop", "wall oven", or "fridge" to show appliance visuals</p>
+        <p style={{fontSize:11,color:T.faint,marginTop:4}}>Type "sink", "range", or "fridge" to show appliance icons</p>
       </div>
       <div style={{padding:16,background:T.amberLight,border:`1px solid #F0D0A0`,borderRadius:9}}>
         <div style={{fontSize:11,color:T.amber,fontWeight:600,letterSpacing:"0.06em",marginBottom:4}}>UNIT PRICE (EST.)</div>
@@ -2373,43 +2337,29 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
           const isLower=DEFS[c.type]?.row==="lower";
           const tkH=isLower?TOEKICK*S:0, bodyH=ch-tkH;
           const isSink=isLower&&notesHas(c,"sink"),isRange=isLower&&(notesHas(c,"range")||notesHas(c,"stove"));
-          const isWallOven=notesHas(c,"wall oven")||notesHas(c,"walloven");
           const fl=c.frontLayout||"doors";
           const nDoors=cw>=27*S?2:1;
 
           return(
             <g key={c.id}>
               {/* Box */}
-              <rect x={cx} y={cy} width={cw} height={bodyH} fill={isRange||isWallOven?"#E8DCC8":"#F4EFE7"} stroke="#555" strokeWidth={1} rx={1}/>
+              <rect x={cx} y={cy} width={cw} height={bodyH} fill="#F4EFE7" stroke="#555" strokeWidth={1} rx={1}/>
               {/* Toekick */}
               {isLower&&<rect x={cx} y={cy+bodyH} width={cw} height={tkH} fill="#3A2A14" stroke="#555" strokeWidth={0.6} rx={0}/>}
               {/* Door lines */}
-              {!isRange&&!isWallOven&&fl==="doors"&&nDoors===2&&<line x1={cx+cw/2} y1={cy+2} x2={cx+cw/2} y2={cy+bodyH-2} stroke="#888" strokeWidth={0.6}/>}
+              {!isRange&&fl==="doors"&&nDoors===2&&<line x1={cx+cw/2} y1={cy+2} x2={cx+cw/2} y2={cy+bodyH-2} stroke="#888" strokeWidth={0.6}/>}
               {/* Drawer lines for drawer layouts */}
-              {!isRange&&!isWallOven&&fl.includes("drawer")&&(()=>{
+              {fl.includes("drawer")&&(()=>{
                 const nDraw=fl==="2-drawer"?2:fl==="3-drawer"?3:fl==="4-drawer"?4:fl==="drawer-over-doors"?1:fl==="3-drawer-over-door"?3:0;
                 const drawH=fl==="drawer-over-doors"?bodyH*0.22:fl==="3-drawer-over-door"?bodyH*0.55/3:bodyH/Math.max(nDraw,1);
                 return Array.from({length:nDraw}).map((_,i)=>(
                   <line key={i} x1={cx+3} y1={cy+drawH*(i+1)} x2={cx+cw-3} y2={cy+drawH*(i+1)} stroke="#888" strokeWidth={0.6}/>
                 ));
               })()}
-              {/* Range oven front */}
-              {isRange&&(
-                <g>
-                  <rect x={cx+3} y={cy+bodyH*0.08} width={cw-6} height={bodyH*0.55} fill="#E0D0B8" stroke="#888" strokeWidth={0.6} rx={1}/>
-                  <rect x={cx+cw*0.2} y={cy+bodyH*0.14} width={cw*0.6} height={bodyH*0.22} fill="#2A2018" fillOpacity={0.2} stroke="#999" strokeWidth={0.5} rx={1}/>
-                  <line x1={cx+cw*0.25} y1={cy+bodyH*0.44} x2={cx+cw*0.75} y2={cy+bodyH*0.44} stroke="#888" strokeWidth={1.5} strokeLinecap="round"/>
-                  <rect x={cx+3} y={cy+bodyH*0.68} width={cw-6} height={bodyH*0.22} fill="#D8C8A8" stroke="#888" strokeWidth={0.5} rx={1}/>
-                </g>
-              )}
-              {/* Wall oven front */}
-              {isWallOven&&!isRange&&(
-                <g>
-                  <rect x={cx+3} y={cy+bodyH*0.05} width={cw-6} height={bodyH*0.5} fill="#E0D0B8" stroke="#888" strokeWidth={0.6} rx={1}/>
-                  <rect x={cx+cw*0.2} y={cy+bodyH*0.1} width={cw*0.6} height={bodyH*0.18} fill="#2A2018" fillOpacity={0.2} stroke="#999" strokeWidth={0.5} rx={1}/>
-                  <line x1={cx+cw*0.25} y1={cy+bodyH*0.34} x2={cx+cw*0.75} y2={cy+bodyH*0.34} stroke="#888" strokeWidth={1.5} strokeLinecap="round"/>
-                </g>
-              )}
+              {/* Range burners */}
+              {isRange&&[[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=>(
+                <circle key={i} cx={cx+cw/2+ox*Math.min(cw*0.2,10)} cy={cy+bodyH/2+oy*Math.min(bodyH*0.2,10)} r={4} fill="none" stroke="#888" strokeWidth={0.8}/>
+              ))}
               {/* "F" finished end markers */}
               {c.x===0&&<text x={cx+4} y={cy+bodyH-6} fontSize={8} fontWeight={700} fill="#333">F</text>}
               {c.x+c.w>=ww-1&&<text x={cx+cw-10} y={cy+bodyH-6} fontSize={8} fontWeight={700} fill="#333">F</text>}
@@ -2843,28 +2793,13 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
           const cx=PL+c.x*ES2, cyy=getCabY(c), cw=c.w*ES2, ch=c.h*ES2;
           const tkH=isLower?TOEKICK*ES2:0, bodyH=ch-tkH, nD=cw>=27*ES2?2:1, dw=cw/nD;
           const isSink=isLower&&notesHas(c,"sink"), isRange=isLower&&(notesHas(c,"range")||notesHas(c,"stove")), isFridge=isLower&&(notesHas(c,"fridge")||notesHas(c,"refrigerator"));
-          const isWallOven=notesHas(c,"wall oven")||notesHas(c,"walloven");
           return(
             <g key={c.id}>
-              <rect x={cx} y={cyy} width={cw} height={bodyH} fill={isFridge?"#D4C8B8":(isRange||isWallOven)?"#C8A888":bf} stroke={de} strokeWidth={0.8} rx={1}/>
+              <rect x={cx} y={cyy} width={cw} height={bodyH} fill={isFridge?"#D4C8B8":isRange?"#C8A888":bf} stroke={de} strokeWidth={0.8} rx={1}/>
               {isLower&&<rect x={cx} y={cyy+bodyH} width={cw} height={tkH} fill={tf} rx={0}/>}
-              {isRange&&(
-                <g>
-                  <rect x={cx+3} y={cyy+bodyH*0.08} width={cw-6} height={bodyH*0.55} fill="#D4B898" stroke={de} strokeWidth={0.6} rx={1}/>
-                  <rect x={cx+cw*0.2} y={cyy+bodyH*0.14} width={cw*0.6} height={bodyH*0.22} fill="#2A2018" fillOpacity={0.25} stroke="#9A8060" strokeWidth={0.6} rx={1}/>
-                  <line x1={cx+cw*0.25} y1={cyy+bodyH*0.44} x2={cx+cw*0.75} y2={cyy+bodyH*0.44} stroke="#9A8060" strokeWidth={2} strokeLinecap="round"/>
-                  <rect x={cx+3} y={cyy+bodyH*0.68} width={cw-6} height={bodyH*0.22} fill="#D0B490" stroke={de} strokeWidth={0.5} rx={1}/>
-                </g>
-              )}
-              {isWallOven&&!isRange&&(
-                <g>
-                  <rect x={cx+3} y={cyy+bodyH*0.05} width={cw-6} height={bodyH*0.5} fill="#D4B898" stroke={de} strokeWidth={0.6} rx={1}/>
-                  <rect x={cx+cw*0.2} y={cyy+bodyH*0.1} width={cw*0.6} height={bodyH*0.18} fill="#2A2018" fillOpacity={0.25} stroke="#9A8060" strokeWidth={0.6} rx={1}/>
-                  <line x1={cx+cw*0.25} y1={cyy+bodyH*0.34} x2={cx+cw*0.75} y2={cyy+bodyH*0.34} stroke="#9A8060" strokeWidth={2} strokeLinecap="round"/>
-                </g>
-              )}
+              {isRange&&(()=>{const br=4,gap=Math.min(cw*0.22,12);return [[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=><g key={i}><circle cx={cx+cw/2+ox*gap} cy={cyy+bodyH/2+oy*gap} r={br} fill="none" stroke="#8A7060" strokeWidth={1}/></g>);})()}
               {isFridge&&<line x1={cx+cw*0.75} y1={cyy+bodyH*0.2} x2={cx+cw*0.75} y2={cyy+bodyH*0.8} stroke="#A09080" strokeWidth={2} strokeLinecap="round"/>}
-              {!isRange&&!isFridge&&!isWallOven&&Array.from({length:nD}).map((_,i)=>{
+              {!isRange&&!isFridge&&Array.from({length:nD}).map((_,i)=>{
                 const ddx=cx+i*dw;
                 if(c.doorStyle==="Open Shelf"){
                   const nSh=Math.max(2,Math.floor(bodyH/35));
