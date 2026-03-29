@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 /* ─── TOKENS ──────────────────────────────────────────────────────────────── */
 const T = {
@@ -81,6 +81,65 @@ const cornerOnWall=(c,wall,room)=>{
 };
 
 const BOX_MATS={melamine_white:{label:"White Melamine"},melamine_maple:{label:"Maple Melamine"},melamine_black:{label:"Black Melamine"},birch_ply:{label:"Birch Plywood"},particle:{label:"Particle Board"}};
+const CROWN_PROFILES=[
+  {key:"ogee",label:"Traditional Ogee",pf:12},{key:"cove",label:"Cove Crown",pf:10},
+  {key:"craftsman",label:"Craftsman (flat)",pf:8},{key:"shaker",label:"Shaker Crown",pf:9},
+  {key:"stacked",label:"Stacked Crown",pf:18},{key:"none",label:"None",pf:0},
+];
+const DEFAULT_TRIM={
+  crown:{enabled:false,profile:"ogee"},
+  lightRail:{enabled:false,pf:8},
+  toeKick:{enabled:true,pf:4},
+  scribe:{enabled:false,pf:3},
+  fillers:{count:0,avgWidth:3,priceEach:35},
+  endPanels:{count:0,priceEach:85},
+};
+// Calculate trim quantities from cabinet layout
+function calcTrim(cabs,room,activeWalls){
+  // Crown: runs along top of uppers + talls on active walls
+  let crownLF=0,lightRailLF=0,toeKickLF=0,scribeLF=0;
+  for(const w of activeWalls){
+    const wCabs=cabs.filter(c=>c.wall===w);
+    const uppers=wCabs.filter(c=>DEFS[c.type]?.row==="upper");
+    const talls=wCabs.filter(c=>c.type==="tall"||c.type==="corner_pantry");
+    const lowers=wCabs.filter(c=>DEFS[c.type]?.row==="lower");
+    crownLF+=uppers.reduce((s,c)=>s+c.w,0)+talls.reduce((s,c)=>s+c.w,0);
+    lightRailLF+=uppers.reduce((s,c)=>s+c.w,0);
+    toeKickLF+=lowers.reduce((s,c)=>s+c.w,0);
+    // Scribe: runs at wall ends where first/last cab meets wall
+    if(lowers.length>0||uppers.length>0){
+      const all=[...lowers,...uppers,...talls];
+      const h=room.height||96;
+      scribeLF+=h*2/12; // ~2 vertical runs per wall in feet
+    }
+  }
+  // Island toe kick (all 4 sides)
+  const islands=cabs.filter(c=>c.wall==="Island");
+  for(const c of islands){
+    toeKickLF+=(c.w+c.d)*2;
+    crownLF+=0; // islands don't get crown
+  }
+  // Convert to feet
+  return{
+    crownLF:Math.ceil(crownLF/12),
+    lightRailLF:Math.ceil(lightRailLF/12),
+    toeKickLF:Math.ceil(toeKickLF/12),
+    scribeLF:Math.ceil(scribeLF),
+  };
+}
+function calcTrimPrice(room,cabs,activeWalls){
+  const t=room.trim||DEFAULT_TRIM;
+  const q=calcTrim(cabs,room,activeWalls);
+  const crownPF=CROWN_PROFILES.find(p=>p.key===t.crown.profile)?.pf||0;
+  const items=[];
+  if(t.crown.enabled&&q.crownLF>0) items.push({label:`Crown moulding — ${CROWN_PROFILES.find(p=>p.key===t.crown.profile)?.label||"Ogee"}`,qty:`${q.crownLF} LF`,price:q.crownLF*crownPF});
+  if(t.lightRail.enabled&&q.lightRailLF>0) items.push({label:"Light rail moulding",qty:`${q.lightRailLF} LF`,price:q.lightRailLF*(t.lightRail.pf||8)});
+  if(t.toeKick.enabled&&q.toeKickLF>0) items.push({label:"Toe kick covers",qty:`${q.toeKickLF} LF`,price:q.toeKickLF*(t.toeKick.pf||4)});
+  if(t.scribe.enabled&&q.scribeLF>0) items.push({label:"Scribe moulding",qty:`${q.scribeLF} LF`,price:q.scribeLF*(t.scribe.pf||3)});
+  if(t.fillers.count>0) items.push({label:`Filler strips (${t.fillers.avgWidth}" avg)`,qty:`${t.fillers.count} pcs`,price:t.fillers.count*(t.fillers.priceEach||35)});
+  if(t.endPanels.count>0) items.push({label:"End panels / skin panels",qty:`${t.endPanels.count} pcs`,price:t.endPanels.count*(t.endPanels.priceEach||85)});
+  return items;
+}
 const APPLIANCE_TYPES=[
   {key:"fridge",label:"Refrigerator",defW:36,defH:70,defD:30},
   {key:"range",label:"Range / Stove",defW:30,defH:36,defD:25},
@@ -97,6 +156,8 @@ const UTILITY_TYPES=[
 ];
 
 let _uid=1;
+// Bump counter past any restored IDs to avoid collisions
+(function(){try{const s=localStorage.getItem("cw_current");if(s){const d=JSON.parse(s);const all=[...(d.cabs||[]),...(d.room?.features||[]),...(d.room?.appliances||[]),...(d.room?.utilities||[])];all.forEach(o=>{const m=o.id?.match(/\d+/);if(m)_uid=Math.max(_uid,parseInt(m[0])+1);});}}catch{}})();
 const uid=()=>`c${_uid++}`;
 const fid=()=>`f${_uid++}`;
 const aid=()=>`a${_uid++}`;
@@ -896,7 +957,6 @@ function RoomOptionsCard({room,setRoom}){
       <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:14}}>Room options</h3>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         <Toggle label="Cabinets to ceiling" desc="Upper cabinets extend to ceiling height" value={room.toCeiling} onChange={v=>setRoom(r=>({...r,toCeiling:v}))}/>
-        <Toggle label="Crown moulding" desc="Decorative trim at top of uppers" value={room.crownMoulding} onChange={v=>setRoom(r=>({...r,crownMoulding:v}))}/>
         <div style={{padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>Bulkhead / soffit</div><div style={{fontSize:12,color:T.faint}}>Dropped ceiling section above uppers</div></div>
@@ -913,6 +973,104 @@ function RoomOptionsCard({room,setRoom}){
             <select value={room.boxMaterial} onChange={e=>setRoom(r=>({...r,boxMaterial:e.target.value}))} style={{...IS,width:180}}>
               {Object.entries(BOX_MATS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
             </select>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ─── TRIM & ACCESSORIES CARD ─────────────────────────────────────────────── */
+function TrimAccessoriesCard({room,setRoom}){
+  const t=room.trim||DEFAULT_TRIM;
+  const upd=(path,val)=>{
+    setRoom(r=>{
+      const newTrim=JSON.parse(JSON.stringify(r.trim||DEFAULT_TRIM));
+      const keys=path.split(".");
+      let obj=newTrim;
+      for(let i=0;i<keys.length-1;i++) obj=obj[keys[i]];
+      obj[keys[keys.length-1]]=val;
+      // Sync crownMoulding boolean for backward compat
+      const cr=newTrim.crown?.enabled||false;
+      return{...r,trim:newTrim,crownMoulding:cr};
+    });
+  };
+  const IS={...IB,padding:"7px 10px"};
+  const TrimRow=({label,desc,enabled,onToggle,children})=>(
+    <div style={{padding:"10px 14px",background:enabled?T.amberLight:T.bg,border:`1px solid ${enabled?T.amber:T.border}`,borderRadius:8,transition:"all 0.2s"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:children&&enabled?10:0}}>
+        <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>{label}</div><div style={{fontSize:12,color:T.faint}}>{desc}</div></div>
+        <button onClick={onToggle} style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:enabled?T.amber:T.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
+          <span style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",left:enabled?22:2,display:"block"}}/>
+        </button>
+      </div>
+      {enabled&&children}
+    </div>
+  );
+  return(
+    <Card>
+      <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:6}}>Trim & accessories</h3>
+      <p style={{fontSize:12,color:T.faint,marginBottom:14}}>Linear footage auto-calculated from your cabinet layout on the Quote and Order Sheet.</p>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {/* Crown moulding */}
+        <TrimRow label="Crown moulding" desc="Decorative trim at top of uppers & talls" enabled={t.crown.enabled} onToggle={()=>upd("crown.enabled",!t.crown.enabled)}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:11,color:T.muted,marginBottom:3}}>Profile</div>
+              <select value={t.crown.profile} onChange={e=>upd("crown.profile",e.target.value)} style={{...IS,width:"100%"}}>
+                {CROWN_PROFILES.filter(p=>p.key!=="none").map(p=><option key={p.key} value={p.key}>{p.label} (${p.pf}/ft)</option>)}
+              </select>
+            </div>
+          </div>
+        </TrimRow>
+
+        {/* Light rail */}
+        <TrimRow label="Light rail moulding" desc="Bottom trim on uppers — hides under-cabinet lights" enabled={t.lightRail.enabled} onToggle={()=>upd("lightRail.enabled",!t.lightRail.enabled)}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:12,color:T.muted}}>Price per foot</span>
+            <input type="number" value={t.lightRail.pf} onChange={e=>upd("lightRail.pf",parseFloat(e.target.value)||0)} style={{...IS,width:70,textAlign:"center"}} step="0.5"/>
+          </div>
+        </TrimRow>
+
+        {/* Toe kick */}
+        <TrimRow label="Toe kick covers" desc="Finished strips covering base cabinet recess" enabled={t.toeKick.enabled} onToggle={()=>upd("toeKick.enabled",!t.toeKick.enabled)}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:12,color:T.muted}}>Price per foot</span>
+            <input type="number" value={t.toeKick.pf} onChange={e=>upd("toeKick.pf",parseFloat(e.target.value)||0)} style={{...IS,width:70,textAlign:"center"}} step="0.5"/>
+          </div>
+        </TrimRow>
+
+        {/* Scribe moulding */}
+        <TrimRow label="Scribe moulding" desc="Thin trim covering wall-to-cabinet gaps" enabled={t.scribe.enabled} onToggle={()=>upd("scribe.enabled",!t.scribe.enabled)}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:12,color:T.muted}}>Price per foot</span>
+            <input type="number" value={t.scribe.pf} onChange={e=>upd("scribe.pf",parseFloat(e.target.value)||0)} style={{...IS,width:70,textAlign:"center"}} step="0.5"/>
+          </div>
+        </TrimRow>
+
+        {/* Fillers */}
+        <div style={{padding:"10px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+          <div style={{fontSize:14,fontWeight:500,color:T.ink}}>Filler strips</div>
+          <div style={{fontSize:12,color:T.faint,marginBottom:8}}>Gap pieces between cabinets and walls</div>
+          <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <div><div style={{fontSize:11,color:T.muted,marginBottom:2}}>Count</div>
+              <input type="number" min="0" value={t.fillers.count} onChange={e=>upd("fillers.count",parseInt(e.target.value)||0)} style={{...IS,width:56,textAlign:"center"}}/></div>
+            <div><div style={{fontSize:11,color:T.muted,marginBottom:2}}>Avg width"</div>
+              <input type="number" min="1" max="6" value={t.fillers.avgWidth} onChange={e=>upd("fillers.avgWidth",parseFloat(e.target.value)||3)} style={{...IS,width:56,textAlign:"center"}}/></div>
+            <div><div style={{fontSize:11,color:T.muted,marginBottom:2}}>$/each</div>
+              <input type="number" value={t.fillers.priceEach} onChange={e=>upd("fillers.priceEach",parseFloat(e.target.value)||0)} style={{...IS,width:70,textAlign:"center"}}/></div>
+          </div>
+        </div>
+
+        {/* End panels */}
+        <div style={{padding:"10px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+          <div style={{fontSize:14,fontWeight:500,color:T.ink}}>End panels / skin panels</div>
+          <div style={{fontSize:12,color:T.faint,marginBottom:8}}>Finished panels on exposed cabinet sides</div>
+          <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <div><div style={{fontSize:11,color:T.muted,marginBottom:2}}>Count</div>
+              <input type="number" min="0" value={t.endPanels.count} onChange={e=>upd("endPanels.count",parseInt(e.target.value)||0)} style={{...IS,width:56,textAlign:"center"}}/></div>
+            <div><div style={{fontSize:11,color:T.muted,marginBottom:2}}>$/each</div>
+              <input type="number" value={t.endPanels.priceEach} onChange={e=>upd("endPanels.priceEach",parseFloat(e.target.value)||0)} style={{...IS,width:70,textAlign:"center"}}/></div>
           </div>
         </div>
       </div>
@@ -1070,6 +1228,10 @@ CRITICAL RULES:
 
         <div style={{marginBottom:24}}>
           <RoomOptionsCard room={room} setRoom={setRoom}/>
+        </div>
+
+        <div style={{marginBottom:24}}>
+          <TrimAccessoriesCard room={room} setRoom={setRoom}/>
         </div>
 
         <Btn onClick={onNext} disabled={activeWalls.length===0} style={{fontSize:15,padding:"12px 28px"}}>Next: Get AI layout recommendations →</Btn>
@@ -2050,7 +2212,7 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
       </div>
       <div style={{breakInside:"avoid",marginBottom:12}}>
         <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Mouldings</div>
-        <div>Crown: {room.crownMoulding?"Yes":"None"}</div>
+        <div>Crown: {room.crownMoulding?(CROWN_PROFILES.find(p=>p.key===(room.trim||DEFAULT_TRIM).crown.profile)?.label||"Yes"):"None"}</div>
         <div>To Ceiling: {room.toCeiling?"Yes":"No"}</div>
         {room.bulkheadHeight>0&&<div>Bulkhead: {room.bulkheadHeight}" drop</div>}
         <div>Toekick: 4" standard</div>
@@ -2355,8 +2517,13 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
 }
 
 /* ─── QUOTE VIEW ──────────────────────────────────────────────────────────── */
-function QuoteView({cabs,project,setProject}){
-  const sub=cabs.reduce((s,c)=>s+getPrice(c),0),tax=Math.round(sub*0.08),total=sub+tax;
+function QuoteView({cabs,project,setProject,room,activeWalls}){
+  const cabSub=cabs.reduce((s,c)=>s+getPrice(c),0);
+  const trimItems=calcTrimPrice(room,cabs,activeWalls||[]);
+  const trimSub=trimItems.reduce((s,i)=>s+i.price,0);
+  const install=cabs.length*25;
+  const sub=cabSub+trimSub+install;
+  const tax=Math.round(sub*0.08),total=sub+tax;
   const IS={...IB,padding:"7px 10px"};
   return(
     <div style={{flex:1,overflowY:"auto",padding:"36px 48px",maxWidth:860}}>
@@ -2372,7 +2539,8 @@ function QuoteView({cabs,project,setProject}){
         {cabs.length===0
           ?<Card><p style={{color:T.faint,textAlign:"center",padding:"40px 0",fontSize:15}}>No cabinets yet — go to Design to add some.</p></Card>
           :<>
-            <Card style={{marginBottom:24,padding:0,overflow:"hidden"}}>
+            {/* Cabinet table */}
+            <Card style={{marginBottom:16,padding:0,overflow:"hidden"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
                 <thead><tr style={{background:T.surfaceAlt,borderBottom:`1px solid ${T.border}`}}>{["#","Type","W × H × D","Wall","Material","Door Style","Front","Price"].map(h=><th key={h} style={{padding:"12px 14px",textAlign:"left",fontSize:12,fontWeight:600,color:T.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>{h}</th>)}</tr></thead>
                 <tbody>{cabs.map((c,i)=>(
@@ -2389,10 +2557,31 @@ function QuoteView({cabs,project,setProject}){
                 ))}</tbody>
               </table>
             </Card>
+
+            {/* Trim & accessories table */}
+            {trimItems.length>0&&(
+              <Card style={{marginBottom:16,padding:0,overflow:"hidden"}}>
+                <div style={{padding:"12px 14px",background:T.surfaceAlt,borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:600,color:T.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>Trim & accessories</div>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
+                  <tbody>{trimItems.map((item,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${T.border}`,background:i%2===0?"#fff":T.surface}}>
+                      <td style={{padding:"11px 14px",fontWeight:500}}>{item.label}</td>
+                      <td style={{padding:"11px 14px",color:T.muted}}>{item.qty}</td>
+                      <td style={{padding:"11px 14px",fontWeight:600,color:T.oak,textAlign:"right"}}>${item.price.toLocaleString()}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </Card>
+            )}
+
+            {/* Totals */}
             <div style={{display:"flex",justifyContent:"flex-end",marginBottom:24}}>
-              <Card style={{width:300,padding:20}}>
-                {[["Subtotal",sub],["Tax (8%)",tax]].map(([l,v])=>(
-                  <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${T.border}`,fontSize:15}}><span style={{color:T.muted}}>{l}</span><span>${v.toLocaleString()}</span></div>
+              <Card style={{width:320,padding:20}}>
+                {[["Cabinetry",cabSub],
+                  ...(trimSub>0?[["Trim & accessories",trimSub]]:[]),
+                  ["Installation ("+cabs.length+" × $25)",install],
+                  ["Tax (8%)",tax]].map(([l,v])=>(
+                  <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${T.border}`,fontSize:14}}><span style={{color:T.muted}}>{l}</span><span>${v.toLocaleString()}</span></div>
                 ))}
                 <div style={{display:"flex",justifyContent:"space-between",padding:"14px 0 0",alignItems:"center"}}>
                   <span style={{fontSize:18,fontWeight:700,fontFamily:"'Lora',serif",color:T.ink}}>Total</span>
@@ -2410,8 +2599,10 @@ function QuoteView({cabs,project,setProject}){
 }
 
 /* ─── ORDER SHEET ─────────────────────────────────────────────────────────── */
-function OrderSheet({cabs,project,room,companyProfile}){
+function OrderSheet({cabs,project,room,companyProfile,activeWalls}){
   const totalPrice=cabs.reduce((s,c)=>s+getPrice(c),0);
+  const trimItems=calcTrimPrice(room,cabs,activeWalls||[]);
+  const trimTotal=trimItems.reduce((s,i)=>s+i.price,0);
   const features=room.features||[];
   return(
     <div style={{flex:1,overflowY:"auto",padding:"36px 48px",maxWidth:900}}>
@@ -2445,7 +2636,7 @@ function OrderSheet({cabs,project,room,companyProfile}){
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
             <div><Lbl>Box material</Lbl><div style={{fontSize:14,fontWeight:500}}>{BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}</div></div>
             <div><Lbl>To ceiling</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.toCeiling?"Yes":"No"}</div></div>
-            <div><Lbl>Crown moulding</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.crownMoulding?"Yes":"No"}</div></div>
+            <div><Lbl>Crown moulding</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.crownMoulding?(CROWN_PROFILES.find(p=>p.key===(room.trim||DEFAULT_TRIM).crown.profile)?.label||"Yes"):"No"}</div></div>
             <div><Lbl>Bulkhead</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.bulkheadHeight>0?`${room.bulkheadHeight}" drop`:"None"}</div></div>
           </div>
           {features.length>0&&(
@@ -2501,9 +2692,26 @@ function OrderSheet({cabs,project,room,companyProfile}){
           );
         })}
         {cabs.length===0&&<Card><p style={{color:T.faint,textAlign:"center",padding:"40px 0"}}>No cabinets to order yet.</p></Card>}
+
+        {/* Trim & accessories */}
+        {trimItems.length>0&&(
+          <Card style={{marginTop:16,padding:0,overflow:"hidden"}}>
+            <div style={{padding:"10px 14px",background:T.surfaceAlt,borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:600,color:T.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>Trim & accessories</div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
+              <tbody>{trimItems.map((item,i)=>(
+                <tr key={i} style={{borderBottom:`1px solid ${T.border}`,background:i%2===0?"#fff":T.surface}}>
+                  <td style={{padding:"9px 14px",fontWeight:500}}>{item.label}</td>
+                  <td style={{padding:"9px 14px",color:T.muted}}>{item.qty}</td>
+                  <td style={{padding:"9px 14px",fontWeight:600,color:T.oak,textAlign:"right"}}>${item.price.toLocaleString()}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </Card>
+        )}
+
         {cabs.length>0&&(
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:24,paddingTop:20,borderTop:`1px solid ${T.border}`}}>
-            <span style={{fontSize:15,color:T.muted}}>{cabs.length} unit{cabs.length!==1?"s":""} — Est. ${totalPrice.toLocaleString()}</span>
+            <span style={{fontSize:15,color:T.muted}}>{cabs.length} unit{cabs.length!==1?"s":""}{trimItems.length>0?` + ${trimItems.length} trim item${trimItems.length!==1?"s":""}`:""}  — Est. ${(totalPrice+trimTotal).toLocaleString()}</span>
             <Btn onClick={()=>window.print()}>🖨 Print / Export PDF</Btn>
           </div>
         )}
@@ -2514,8 +2722,12 @@ function OrderSheet({cabs,project,room,companyProfile}){
 
 /* ─── CLIENT PRESENTATION VIEW ───────────────────────────────────────────── */
 function PresentationView({cabs,room,project,activeWalls,companyProfile}){
-  const total=cabs.reduce((s,c)=>s+getPrice(c),0);
-  const tax=Math.round(total*0.08);
+  const cabTotal=cabs.reduce((s,c)=>s+getPrice(c),0);
+  const trimItems=calcTrimPrice(room,cabs,activeWalls||[]);
+  const trimTotal=trimItems.reduce((s,i)=>s+i.price,0);
+  const install=cabs.length*25;
+  const tax=Math.round((cabTotal+trimTotal+install)*0.08);
+  const total=cabTotal+trimTotal+install;
   const date=new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
   const features=room.features||[];
 
@@ -2738,7 +2950,7 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
               <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:13}}>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Box material</span><span style={{color:T.ink}}>{BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}</span></div>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Cabinets to ceiling</span><span style={{color:T.ink}}>{room.toCeiling?"Yes":"No"}</span></div>
-                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Crown moulding</span><span style={{color:T.ink}}>{room.crownMoulding?"Yes":"No"}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Crown moulding</span><span style={{color:T.ink}}>{room.crownMoulding?(CROWN_PROFILES.find(p=>p.key===(room.trim||DEFAULT_TRIM).crown.profile)?.label||"Yes"):"No"}</span></div>
                 {room.bulkheadHeight>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Bulkhead drop</span><span style={{color:T.ink}}>{room.bulkheadHeight}"</span></div>}
                 {(room.utilities||[]).length>0&&<div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${T.surface}`}}>
                   <div style={{fontSize:11,fontWeight:600,color:T.muted,marginBottom:4}}>UTILITY LOCATIONS</div>
@@ -2824,7 +3036,9 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
               marginBottom:16,paddingBottom:12,borderBottom:`1px solid #E8C888`}}>
               Investment Summary
             </div>
-            {[["Cabinet supply",total],["Installation ($25/cabinet)",cabs.length*25]].map(([l,v])=>(
+            {[["Cabinet supply",cabTotal],
+              ...(trimTotal>0?trimItems.map(i=>[i.label+" ("+i.qty+")",i.price]):[]),
+              ["Installation ($25/cabinet)",install]].map(([l,v])=>(
               <div key={l} style={{display:"flex",justifyContent:"space-between",
                 marginBottom:8,fontSize:14}}>
                 <span style={{color:T.muted}}>{l}</span>
@@ -2834,16 +3048,16 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
             <div style={{height:1,background:"#E8C888",margin:"12px 0"}}/>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:14}}>
               <span style={{color:T.muted}}>Subtotal</span>
-              <span style={{color:T.text}}>${(total+cabs.length*25).toLocaleString()}</span>
+              <span style={{color:T.text}}>${total.toLocaleString()}</span>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,fontSize:14}}>
               <span style={{color:T.muted}}>Tax (8%)</span>
-              <span style={{color:T.text}}>${Math.round((total+cabs.length*25)*0.08).toLocaleString()}</span>
+              <span style={{color:T.text}}>${tax.toLocaleString()}</span>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontFamily:"'Lora',serif",fontSize:18,fontWeight:600,color:T.ink}}>Total</span>
               <span style={{fontFamily:"'Lora',serif",fontSize:24,fontWeight:600,color:T.oak}}>
-                ${Math.round((total+cabs.length*25)*1.08).toLocaleString()}
+                ${(total+tax).toLocaleString()}
               </span>
             </div>
           </div>
@@ -2878,6 +3092,121 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
 const PROFILE_KEY="cw_company_profile";
 function loadProfile(){try{return JSON.parse(localStorage.getItem(PROFILE_KEY))||null;}catch{return null;}}
 function saveProfile(p){localStorage.setItem(PROFILE_KEY,JSON.stringify(p));}
+
+/* ─── PROJECT PERSISTENCE ─────────────────────────────────────────────────── */
+const PROJECTS_KEY="cw_projects";
+const CURRENT_KEY="cw_current";
+
+function loadProjectList(){try{return JSON.parse(localStorage.getItem(PROJECTS_KEY))||[];}catch{return [];}}
+function saveProjectList(list){localStorage.setItem(PROJECTS_KEY,JSON.stringify(list));}
+
+function loadCurrentSession(){try{return JSON.parse(localStorage.getItem(CURRENT_KEY))||null;}catch{return null;}}
+function saveCurrentSession(data){localStorage.setItem(CURRENT_KEY,JSON.stringify(data));}
+
+const DEFAULT_PROJECT={name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:""};
+const DEFAULT_ROOM={width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",trim:{...DEFAULT_TRIM}};
+const DEFAULT_WALLS=["South","West"];
+
+function packSession(projectId,project,room,activeWalls,cabs,wall,view){
+  return{projectId,project,room,activeWalls,cabs,wall,view,savedAt:new Date().toISOString()};
+}
+
+/* ─── PROJECTS MODAL ──────────────────────────────────────────────────────── */
+function ProjectsModal({onClose,onLoad,onNew,currentId,project,room,activeWalls,cabs,wall,view}){
+  const [projects,setProjects]=useState(()=>loadProjectList());
+  const [confirmDelete,setConfirmDelete]=useState(null);
+
+  const handleSave=()=>{
+    const list=loadProjectList();
+    const existing=list.findIndex(p=>p.id===currentId);
+    const entry={
+      id:currentId,
+      name:project.name,
+      client:project.client||"",
+      cabinetCount:cabs.length,
+      total:cabs.reduce((s,c)=>s+getPrice(c),0),
+      savedAt:new Date().toISOString(),
+      data:packSession(currentId,project,room,activeWalls,cabs,wall,view),
+    };
+    if(existing>=0) list[existing]=entry; else list.unshift(entry);
+    saveProjectList(list);
+    setProjects(list);
+  };
+
+  const handleDelete=(id)=>{
+    const list=loadProjectList().filter(p=>p.id!==id);
+    saveProjectList(list);
+    setProjects(list);
+    setConfirmDelete(null);
+  };
+
+  const IS={padding:"9px 12px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:14,color:T.ink,background:"#fff",width:"100%",outline:"none"};
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(30,18,8,0.55)",backdropFilter:"blur(4px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,width:620,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(30,18,8,0.25)"}}>
+        {/* Header */}
+        <div style={{padding:"24px 28px 16px",borderBottom:`1px solid ${T.surface}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <h2 style={{fontFamily:"'Lora',serif",fontSize:20,fontWeight:600,color:T.oak,marginBottom:2}}>Projects</h2>
+            <p style={{fontSize:13,color:T.muted}}>{projects.length} saved project{projects.length!==1?"s":""}</p>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{handleSave();}} style={{padding:"8px 16px",background:T.amber,color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>💾 Save current</button>
+            <button onClick={()=>{onNew();onClose();}} style={{padding:"8px 16px",background:T.surface,color:T.oak,border:`1px solid ${T.border}`,borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ New project</button>
+          </div>
+        </div>
+
+        {/* Project list */}
+        <div style={{flex:1,overflowY:"auto",padding:"12px 28px 24px"}}>
+          {projects.length===0&&(
+            <div style={{textAlign:"center",padding:"40px 20px",color:T.faint}}>
+              <div style={{fontSize:32,marginBottom:12}}>📁</div>
+              <div style={{fontSize:14}}>No saved projects yet</div>
+              <div style={{fontSize:12,marginTop:4}}>Click "Save current" to save your work</div>
+            </div>
+          )}
+          {projects.map(p=>{
+            const isCurrent=p.id===currentId;
+            const date=new Date(p.savedAt);
+            const dateStr=date.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+            const timeStr=date.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+            return(
+              <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",marginBottom:6,background:isCurrent?T.amberLight:T.bg,border:`1px solid ${isCurrent?T.amber:T.border}`,borderRadius:10,transition:"all 0.15s"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:15,fontWeight:600,color:T.oak,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {p.name}{isCurrent&&<span style={{fontSize:11,color:T.amber,fontWeight:700,marginLeft:8}}>● CURRENT</span>}
+                  </div>
+                  <div style={{fontSize:12,color:T.muted,marginTop:3}}>
+                    {p.client&&<span>{p.client} · </span>}
+                    {p.cabinetCount} cabinet{p.cabinetCount!==1?"s":""} · ${(p.total||0).toLocaleString()} · {dateStr} at {timeStr}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  {!isCurrent&&<button onClick={()=>{onLoad(p.data);onClose();}} style={{padding:"6px 14px",background:T.oak,color:"#fff",border:"none",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer"}}>Load</button>}
+                  {confirmDelete===p.id?(
+                    <div style={{display:"flex",gap:4}}>
+                      <button onClick={()=>handleDelete(p.id)} style={{padding:"6px 10px",background:T.red,color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>Delete</button>
+                      <button onClick={()=>setConfirmDelete(null)} style={{padding:"6px 10px",background:T.surface,color:T.muted,border:`1px solid ${T.border}`,borderRadius:6,fontSize:11,cursor:"pointer"}}>Cancel</button>
+                    </div>
+                  ):(
+                    <button onClick={()=>setConfirmDelete(p.id)} title="Delete" style={{padding:"6px 8px",background:"none",border:`1px solid ${T.border}`,borderRadius:6,fontSize:13,cursor:"pointer",color:T.faint}}>🗑</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"12px 28px 20px",borderTop:`1px solid ${T.surface}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:11,color:T.faint}}>Projects are saved in this browser's storage</span>
+          <button onClick={onClose} style={{padding:"8px 20px",background:T.surface,color:T.muted,border:`1px solid ${T.border}`,borderRadius:8,fontSize:13,cursor:"pointer"}}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CompanyProfileModal({profile,setProfile,onClose,isFirstTime}){
   const [draft,setDraft]=useState(profile||{companyName:"",contactName:"",phone:"",email:"",address:"",city:"",province:"",postal:"",licenseNum:"",logoDataUrl:""});
@@ -2975,17 +3304,55 @@ function CompanyProfileModal({profile,setProfile,onClose,isFirstTime}){
 
 /* ─── MAIN APP ────────────────────────────────────────────────────────────── */
 export default function App(){
-  const [view,setView]=useState("setup");
+  const _restored=useState(()=>loadCurrentSession())[0];
+  const [projectId,setProjectId]=useState(()=>_restored?.projectId||uid());
+  const [view,setView]=useState(_restored?.view||"setup");
   const [subView,setSubView]=useState("elevation");
-  const [project,setProject]=useState({name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:""});
-  const [room,setRoom]=useState({width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply"});
-  const [activeWalls,setActiveWalls]=useState(["South","West"]);
-  const [cabs,setCabs]=useState([]);
+  const [project,setProject]=useState(_restored?.project||{...DEFAULT_PROJECT});
+  const [room,setRoom]=useState(_restored?.room||{...DEFAULT_ROOM});
+  const [activeWalls,setActiveWalls]=useState(_restored?.activeWalls||[...DEFAULT_WALLS]);
+  const [cabs,setCabs]=useState(_restored?.cabs||[]);
   const [sel,setSel]=useState(null);
-  const [wall,setWall]=useState("South");
+  const [wall,setWall]=useState(_restored?.wall||"South");
   const [zoom,setZoom]=useState(1);
   const [companyProfile,setCompanyProfile]=useState(()=>loadProfile());
   const [showProfile,setShowProfile]=useState(()=>!loadProfile());
+  const [showProjects,setShowProjects]=useState(false);
+
+  // Auto-save current session on every meaningful state change
+  useEffect(()=>{
+    const timer=setTimeout(()=>{
+      saveCurrentSession(packSession(projectId,project,room,activeWalls,cabs,wall,view));
+    },500);
+    return()=>clearTimeout(timer);
+  },[projectId,project,room,activeWalls,cabs,wall,view]);
+
+  // Load a saved project
+  const loadProject=(data)=>{
+    if(!data) return;
+    setProjectId(data.projectId||uid());
+    setProject(data.project||{...DEFAULT_PROJECT});
+    setRoom(data.room||{...DEFAULT_ROOM});
+    setActiveWalls(data.activeWalls||[...DEFAULT_WALLS]);
+    setCabs(data.cabs||[]);
+    setWall(data.wall||data.activeWalls?.[0]||"South");
+    setView(data.view||"setup");
+    setSel(null);
+    setZoom(1);
+  };
+
+  // Start a new blank project
+  const newProject=()=>{
+    setProjectId(uid());
+    setProject({...DEFAULT_PROJECT});
+    setRoom({...DEFAULT_ROOM});
+    setActiveWalls([...DEFAULT_WALLS]);
+    setCabs([]);
+    setWall("South");
+    setView("setup");
+    setSel(null);
+    setZoom(1);
+  };
   const zoomIn=()=>setZoom(z=>Math.min(2,+(z+0.2).toFixed(1)));
   const zoomOut=()=>setZoom(z=>Math.max(0.4,+(z-0.2).toFixed(1)));
   const zoomReset=()=>setZoom(1);
@@ -3079,6 +3446,7 @@ export default function App(){
           <div style={{width:1,height:22,background:T.border}}/>
           <span style={{fontSize:14,color:T.muted}}>{project.name}</span>
           <button onClick={()=>setShowProfile(true)} title="Company settings" style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:T.faint,padding:4,lineHeight:1,marginLeft:4}}>⚙</button>
+          <button onClick={()=>setShowProjects(true)} title="Projects" style={{padding:"4px 10px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",color:T.oak,display:"flex",alignItems:"center",gap:4}}>📁 Projects</button>
         </div>
         <nav style={{display:"flex",gap:2,height:"100%",alignItems:"stretch"}}>
           {STEPS.map(s=>{
@@ -3133,13 +3501,15 @@ export default function App(){
           </div>
           <PropertiesPanel c={selCab} update={updateCab} del={deleteCab} activeWalls={[...activeWalls,"Island"]} cabs={cabs} updateBulk={updateBulk}/>
         </>}
-        {view==="quote"&&<QuoteView cabs={cabs} project={project} setProject={setProject}/>}
+        {view==="quote"&&<QuoteView cabs={cabs} project={project} setProject={setProject} room={room} activeWalls={activeWalls}/>}
         {view==="present"&&<PresentationView cabs={cabs} room={room} project={project} activeWalls={activeWalls} companyProfile={companyProfile}/>}
         {view==="shop"&&<ShopDrawings cabs={cabs} room={room} project={project} activeWalls={activeWalls} companyProfile={companyProfile}/>}
-        {view==="order"&&<OrderSheet cabs={cabs} project={project} room={room} companyProfile={companyProfile}/>}
+        {view==="order"&&<OrderSheet cabs={cabs} project={project} room={room} companyProfile={companyProfile} activeWalls={activeWalls}/>}
       </div>
       {/* Company profile modal */}
       {showProfile&&<CompanyProfileModal profile={companyProfile} setProfile={setCompanyProfile} onClose={()=>setShowProfile(false)} isFirstTime={!companyProfile}/>}
+      {/* Projects modal */}
+      {showProjects&&<ProjectsModal onClose={()=>setShowProjects(false)} onLoad={loadProject} onNew={newProject} currentId={projectId} project={project} room={room} activeWalls={activeWalls} cabs={cabs} wall={wall} view={view}/>}
     </div>
   );
 }
