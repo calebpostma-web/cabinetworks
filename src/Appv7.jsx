@@ -53,366 +53,6 @@ const getPrice=c=>Math.round(BASE_P[c.type]+(c.w*c.h/144)*(MATS[c.material]?.rat
 const notesHas=(c,kw)=>c.notes?.toLowerCase().includes(kw);
 const wallWidth=(wall,room)=>["East","West"].includes(wall)?room.depth:room.width;
 
-/* ─── LAYOUT ENGINE ───────────────────────────────────────────────────────── */
-// Deterministic cabinet placement — AI picks design decisions, this does the math.
-const FILL_W=[36,33,30,27,24,21,18,15,12,9]; // standard base widths, largest first
-const MIN_CAB=9;
-
-const LE={
-  // Doors block lower cabs; windows are fine below counter height
-  lowerObstacles(wall,features){
-    return(features||[]).filter(f=>f.wall===wall&&f.type==="door")
-      .map(f=>({x:Math.max(0,f.x-2),w:f.width+4}));
-  },
-  // Windows + doors + range hood block upper cabs
-  upperObstacles(wall,features,rangeZone){
-    const obs=(features||[]).filter(f=>f.wall===wall)
-      .map(f=>({x:Math.max(0,f.x-2),w:f.width+4}));
-    if(rangeZone) obs.push(rangeZone);
-    return obs;
-  },
-
-  // First window on a wall
-  firstWindow(wall,features){
-    return(features||[]).find(f=>f.wall===wall&&f.type==="window");
-  },
-
-  // Find utility location
-  utilityAt(wall,type,utilities){
-    return(utilities||[]).find(u=>u.wall===wall&&u.type===type);
-  },
-
-  // Check overlap
-  overlaps(x,w,zones){
-    return zones.some(z=>x<z.x+z.w&&x+w>z.x);
-  },
-
-  // Nudge position to avoid zones — try ±1..30"
-  nudge(x,w,wallW,zones){
-    if(!LE.overlaps(x,w,zones)) return x;
-    for(let d=1;d<=30;d++){
-      if(x-d>=0&&!LE.overlaps(x-d,w,zones)) return x-d;
-      if(x+d+w<=wallW&&!LE.overlaps(x+d,w,zones)) return x+d;
-    }
-    return x;
-  },
-
-  // Resolve hint → x position
-  resolveHint(hint,anchorW,wallW,placed,wall,features,utilities){
-    if(hint==="under-window"){
-      const win=LE.firstWindow(wall,features);
-      if(win) return clamp(Math.round(win.x+win.width/2-anchorW/2),0,wallW-anchorW);
-      return Math.round(wallW/2-anchorW/2);
-    }
-    if(hint==="center") return Math.round(wallW/2-anchorW/2);
-    if(hint==="end-left") return 0;
-    if(hint==="end-right") return wallW-anchorW;
-    if(hint==="right-of-sink"){
-      const s=placed.find(p=>p.role==="sink");
-      return s?s.x+s.w:Math.round(wallW/2);
-    }
-    if(hint==="left-of-sink"){
-      const s=placed.find(p=>p.role==="sink");
-      return s?s.x-anchorW:Math.round(wallW/2-anchorW);
-    }
-    if(hint==="at-water"){
-      const u=LE.utilityAt(wall,"water",utilities);
-      if(u) return clamp(Math.round(u.x-anchorW/2),0,wallW-anchorW);
-      return Math.round(wallW/2-anchorW/2);
-    }
-    if(hint==="at-gas"){
-      const u=LE.utilityAt(wall,"gas",utilities);
-      if(u) return clamp(Math.round(u.x-anchorW/2),0,wallW-anchorW);
-      return Math.round(wallW/2-anchorW/2);
-    }
-    return Math.round(wallW/2-anchorW/2);
-  },
-
-  // Find free segments in [0, wallW] given occupied zones
-  freeSegs(wallW,occ){
-    const sorted=[...occ].sort((a,b)=>a.x-b.x);
-    const segs=[];
-    let cur=0;
-    for(const o of sorted){
-      const ox=Math.max(0,o.x);
-      if(ox>cur+0.5) segs.push({x:Math.round(cur),endX:Math.round(ox)});
-      cur=Math.max(cur,ox+o.w);
-    }
-    if(cur<wallW-0.5) segs.push({x:Math.round(cur),endX:Math.round(wallW)});
-    return segs.filter(s=>s.endX-s.x>=MIN_CAB);
-  },
-
-  // Fill a segment [x, endX] with standard cabinets
-  fillSeg(startX,endX){
-    const cabs=[];
-    let cur=startX;
-    while(endX-cur>=MIN_CAB){
-      // Find largest standard width that fits
-      const sw=FILL_W.find(w=>w<=endX-cur);
-      if(!sw) break;
-      // If remaining after this would be too small for another cab, use the full remaining space
-      // (pick a standard width closest to remaining)
-      const remaining=endX-cur;
-      if(remaining-sw>0&&remaining-sw<MIN_CAB){
-        // Use the full remaining as one cab (pick nearest standard or exact)
-        const exact=FILL_W.find(w=>w<=remaining)||remaining;
-        cabs.push({x:cur,w:remaining<=48?remaining:exact});
-        cur+=remaining;
-      } else {
-        cabs.push({x:cur,w:sw});
-        cur+=sw;
-      }
-    }
-    return cabs;
-  },
-
-  // Build all cabinets for one wall
-  buildWall(wallName,wallW,assignments,room,style,upperH){
-    const features=room.features||[];
-    const utilities=room.utilities||[];
-    const appliances=room.appliances||[];
-    const doorObs=LE.lowerObstacles(wallName,features);
-
-    const placed=[]; // placed anchors with roles
-    const allCabs=[];
-
-    // Get appliance dimension
-    const appDim=role=>{
-      const map={sink:"sink",range:"range",fridge:"fridge",dishwasher:"dishwasher"};
-      return appliances.find(a=>a.type===map[role]);
-    };
-
-    // Place anchors in order: sink first (others may reference it)
-    const order=["sink","fridge","pantry","range","dishwasher"];
-    for(const role of order){
-      const asgn=assignments[role];
-      if(!asgn||asgn.wall!==wallName) continue;
-
-      const ap=appDim(role);
-      let w,type,h,d,notes;
-      switch(role){
-        case"sink":
-          w=ap?Math.max(ap.w+3,30):33; type="base"; h=34.5; d=24; notes="Sink base"; break;
-        case"range":
-          w=ap?ap.w:30; type="base"; h=34.5; d=24; notes="Range"; break;
-        case"fridge":
-          w=ap?ap.w:36; type="base"; h=34.5; d=24; notes="Fridge space"; break;
-        case"dishwasher":
-          w=24; type="base"; h=34.5; d=24; notes="Dishwasher"; break;
-        case"pantry":
-          w=24; type="tall"; h=84; d=24; notes="Pantry"; break;
-        default: continue;
-      }
-
-      // Snap to nearest standard width (except range/fridge which need exact)
-      if(role!=="range"&&role!=="fridge"&&role!=="dishwasher"){
-        const snapped=FILL_W.find(sw=>sw>=w);
-        if(snapped) w=snapped;
-      }
-
-      let x=LE.resolveHint(asgn.hint,w,wallW,placed,wallName,features,utilities);
-      // Only nudge around door obstacles (not other anchors — we resolve those next)
-      x=LE.nudge(x,w,wallW,doorObs);
-      x=clamp(Math.round(x),0,wallW-w);
-
-      placed.push({x,w,role,type,h:h,d:d,notes});
-    }
-
-    // Resolve anchor overlaps: sort by x, push right if overlapping
-    placed.sort((a,b)=>a.x-b.x);
-    for(let i=1;i<placed.length;i++){
-      const minX=placed[i-1].x+placed[i-1].w;
-      if(placed[i].x<minX) placed[i].x=minX;
-    }
-    // If last anchor exceeds wall, compact from right
-    if(placed.length>0){
-      const last=placed[placed.length-1];
-      if(last.x+last.w>wallW){
-        // Push everything left proportionally
-        let overflow=last.x+last.w-wallW;
-        for(let i=placed.length-1;i>=0&&overflow>0;i--){
-          const shift=Math.min(overflow,i>0?placed[i].x-(placed[i-1].x+placed[i-1].w):placed[i].x);
-          placed[i].x-=shift;
-          overflow-=shift;
-        }
-      }
-    }
-    // Clamp all
-    placed.forEach(p=>{p.x=clamp(p.x,0,wallW-p.w);});
-
-    // Build occupied from resolved anchors + door obstacles
-    const occupied=[...doorObs,...placed.map(p=>({x:p.x,w:p.w}))];
-
-    // Generate cabinet objects from placed anchors
-    for(const p of placed){
-      // Fridge is a gap — don't generate a cabinet
-      if(p.role!=="fridge"){
-        allCabs.push({type:p.type||"base",wall:wallName,w:p.w,h:p.h||34.5,d:p.d||24,x:p.x,
-          material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:p.notes||""});
-      }
-    }
-
-    // Fill remaining space with base cabinets
-    const freeSegs=LE.freeSegs(wallW,occupied);
-    for(const seg of freeSegs){
-      const fills=LE.fillSeg(seg.x,seg.endX);
-      for(const f of fills){
-        allCabs.push({type:"base",wall:wallName,w:f.w,h:34.5,d:24,x:f.x,
-          material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:""});
-      }
-    }
-
-    // Generate uppers — skip windows, doors, range hood zone, and fridge zone
-    const rangeItem=placed.find(p=>p.role==="range");
-    const fridgeItem=placed.find(p=>p.role==="fridge");
-    const upperObs=LE.upperObstacles(wallName,features,
-      rangeItem?{x:rangeItem.x-2,w:rangeItem.w+4}:null);
-    // Also exclude fridge zone from uppers
-    if(fridgeItem) upperObs.push({x:fridgeItem.x,w:fridgeItem.w});
-    // Exclude pantry zone from uppers (tall cab covers that space)
-    const pantryItem=placed.find(p=>p.role==="pantry");
-    if(pantryItem) upperObs.push({x:pantryItem.x,w:pantryItem.w});
-
-    // Find contiguous runs of lower cabs and generate matching uppers
-    const lowers=allCabs.filter(c=>c.type==="base").sort((a,b)=>a.x-b.x);
-    // Merge lowers into runs
-    const runs=[];
-    for(const l of lowers){
-      const last=runs[runs.length-1];
-      if(last&&Math.abs(l.x-(last.x+last.w))<1){
-        last.w=l.x+l.w-last.x; // extend run
-      } else {
-        runs.push({x:l.x,w:l.w});
-      }
-    }
-    // For each run, find the portions not blocked by upper obstacles
-    for(const run of runs){
-      const runOcc=upperObs.map(o=>({x:Math.max(run.x,o.x),w:Math.min(run.x+run.w,o.x+o.w)-Math.max(run.x,o.x)})).filter(o=>o.w>0);
-      const freeUpper=LE.freeSegs(run.x+run.w,[...runOcc.map(o=>({x:o.x,w:o.w}))].concat([{x:0,w:run.x}]));
-      for(const seg of freeUpper){
-        if(seg.endX-seg.x<MIN_CAB) continue;
-        const fills=LE.fillSeg(seg.x,seg.endX);
-        for(const f of fills){
-          allCabs.push({type:"upper",wall:wallName,w:f.w,h:upperH||30,d:12,x:f.x,
-            material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:""});
-        }
-      }
-    }
-
-    return allCabs;
-  },
-
-  // Compute work triangle distances (approximate)
-  workTriangle(placed,activeWalls,room){
-    const find=role=>{
-      for(const w of activeWalls){
-        const p=placed.find(x=>x.role===role&&x.wall===w);
-        if(p) return{wall:w,cx:p.x+p.w/2};
-      }
-      return null;
-    };
-    const sink=find("sink"),range=find("range"),fridge=find("fridge");
-    if(!sink||!range||!fridge) return null;
-
-    const dist=(a,b)=>{
-      if(a.wall===b.wall) return Math.abs(a.cx-b.cx);
-      // Adjacent walls — distance is from each point to the corner + turn
-      return a.cx+b.cx; // simplified corner distance
-    };
-
-    const sr=dist(sink,range),rf=dist(range,fridge),fs=dist(fridge,sink);
-    const total=sr+rf+fs;
-    return{sink:Math.round(sr),range:Math.round(rf),fridge:Math.round(fs),total:Math.round(total),
-      valid:total>=144&&total<=312,note:total>=144&&total<=312?"Work triangle is within NKBA guidelines.":"Work triangle is outside the 144\"–312\" recommended range."};
-  },
-
-  // Master: build entire layout from AI plan
-  buildLayout(plan,room,activeWalls){
-    const style={material:plan.material||"maple",doorStyle:plan.doorStyle||"Shaker",finish:plan.finish||"Natural"};
-    let allCabs=[];
-    const allPlaced=[];
-
-    for(const wall of activeWalls){
-      const ww=wallWidth(wall,room);
-      const wallCabs=LE.buildWall(wall,ww,plan.assignments||{},room,style,plan.upperHeight||30);
-      allCabs=[...allCabs,...wallCabs];
-      // Collect placed anchors for work triangle
-      for(const role of["sink","range","fridge"]){
-        const a=(plan.assignments||{})[role];
-        if(a&&a.wall===wall){
-          const cab=wallCabs.find(c=>c.notes&&c.notes.toLowerCase().includes(role));
-          if(cab) allPlaced.push({role,wall,x:cab.x,w:cab.w});
-          // Fridge won't have a cab — use the placed zone
-          if(role==="fridge"&&!cab){
-            const ap=(room.appliances||[]).find(x=>x.type==="fridge");
-            const fw=ap?ap.w:36;
-            const hint=a.hint;
-            const x=hint==="end-right"?ww-fw:hint==="end-left"?0:Math.round(ww/2-fw/2);
-            allPlaced.push({role,wall,x,w:fw});
-          }
-        }
-      }
-    }
-
-    // Island
-    if(plan.island&&room.width>=120&&room.depth>=144){
-      allCabs.push({type:"island",wall:"Island",w:plan.islandWidth||48,h:34.5,d:plan.islandDepth||36,
-        x:0,ix:0,iy:0,material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:"Island"});
-    }
-
-    // Add IDs
-    allCabs=allCabs.map(c=>({id:uid(),...c,ix:c.ix||0,iy:c.iy||0,useStandard:true}));
-
-    // Work triangle
-    const tri=LE.workTriangle(allPlaced,activeWalls,room);
-
-    return{cabinets:allCabs,workTriangle:tri,placed:allPlaced};
-  }
-};
-
-/* ─── NKBA CHECKLIST ──────────────────────────────────────────────────────── */
-function buildChecklist(room,activeWalls,cabs,tri){
-  const checks=[];
-  // Aisle clearance
-  const hasFacing=activeWalls.includes("South")&&activeWalls.includes("North");
-  if(hasFacing){
-    const aisle=room.depth-48; // two 24" deep cabinets
-    checks.push({rule:"Primary aisle clearance",description:'42" min between facing surfaces',recommended:'48"',met:aisle>=42});
-  } else {
-    checks.push({rule:"Primary aisle clearance",description:'42" min between facing surfaces',recommended:'48"',met:true});
-  }
-  checks.push({rule:"Counter height",description:'36" floor to countertop (34.5" cab + 1.5" top)',recommended:'36"',met:true});
-  checks.push({rule:"Upper cabinet elevation",description:'18" min between countertop and upper bottom',recommended:'18"',met:true});
-  // Work triangle
-  if(tri){
-    checks.push({rule:"Work triangle perimeter",description:'144"–312" total',recommended:'<264"',met:tri.valid});
-  }
-  // Sink landing — check if there's a cab on each side of sink
-  const sinkCab=cabs.find(c=>c.notes&&c.notes.toLowerCase().includes("sink"));
-  if(sinkCab){
-    const sameWallLowers=cabs.filter(c=>c.wall===sinkCab.wall&&c.type==="base").sort((a,b)=>a.x-b.x);
-    const leftNeighbor=sameWallLowers.find(c=>Math.abs(c.x+c.w-sinkCab.x)<2&&c.id!==sinkCab.id);
-    const rightNeighbor=sameWallLowers.find(c=>Math.abs(c.x-(sinkCab.x+sinkCab.w))<2&&c.id!==sinkCab.id);
-    const leftW=leftNeighbor?leftNeighbor.w:0,rightW=rightNeighbor?rightNeighbor.w:0;
-    checks.push({rule:"Sink landing space",description:'24" one side, 18" other',recommended:'24"/18"',met:leftW>=18&&rightW>=18});
-  }
-  // Range landing
-  const rangeCab=cabs.find(c=>c.notes&&c.notes.toLowerCase().includes("range"));
-  if(rangeCab){
-    const sameWallLowers=cabs.filter(c=>c.wall===rangeCab.wall&&c.type==="base").sort((a,b)=>a.x-b.x);
-    const leftN=sameWallLowers.find(c=>Math.abs(c.x+c.w-rangeCab.x)<2&&c.id!==rangeCab.id);
-    const rightN=sameWallLowers.find(c=>Math.abs(c.x-(rangeCab.x+rangeCab.w))<2&&c.id!==rangeCab.id);
-    checks.push({rule:"Range landing space",description:'12" one side, 15" other',recommended:'15"/12"',met:(leftN?leftN.w>=12:false)&&(rightN?rightN.w>=12:false)});
-  }
-  // Island clearance
-  const island=cabs.find(c=>c.type==="island");
-  if(island){
-    const clearance=Math.min(room.width-island.w,room.depth-island.d)/2;
-    checks.push({rule:"Island clearance",description:'42" min on all sides',recommended:'48"',met:clearance>=42});
-  }
-  return checks;
-}
-
 const makeCab=(type,wall,all,ww)=>{
   const def=DEFS[type];
   const row=all.filter(c=>c.wall===wall&&DEFS[c.type]?.row===def.row);
@@ -892,90 +532,40 @@ function RecommendationsView({room,activeWalls,onApply,onSkip}){
     try{
       const sqft=((room.width/12)*(room.depth/12)).toFixed(1);
       const wallList=activeWalls.join(", ");
-      const wallDims=activeWalls.map(w=>`${w}: ${wallWidth(w,room)}"`).join(", ");
       const featList=(room.features||[]).map(f=>`${f.type} on ${f.wall} wall at ${f.x}" from left, ${f.width}" wide`).join("; ")||"none";
-      const applianceList=(room.appliances||[]).map(a=>`${a.label}: ${a.w}"W on ${a.wall} wall`).join("; ")||"standard sizes";
-      const utilityList=(room.utilities||[]).map(u=>`${u.label} on ${u.wall} wall at ${u.x}" from left`).join("; ")||"none marked";
-
-      // SIMPLIFIED PROMPT — AI makes design decisions, code does the math
+      const applianceList=(room.appliances||[]).map(a=>`${a.label}: ${a.w}"W × ${a.h}"H × ${a.d}"D on ${a.wall} wall`).join("; ")||"none specified (use standard sizes)";
+      const utilityList=(room.utilities||[]).map(u=>`${u.label} on ${u.wall} wall at ${u.x}" from left${u.notes?` (${u.notes})`:""}`).join("; ")||"none marked";
+      const roomOpts=[];
+      if(room.toCeiling) roomOpts.push("Cabinets to ceiling: YES — uppers should reach ceiling height");
+      if(room.crownMoulding) roomOpts.push("Crown moulding: YES — account for 3-4\" trim at top of uppers");
+      if(room.bulkheadHeight>0) roomOpts.push(`Bulkhead/soffit: ${room.bulkheadHeight}" drop from ceiling — limits upper cabinet height`);
+      roomOpts.push(`Box material: ${BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}`);
+      const optsStr=roomOpts.join(". ");
       const txt=await callClaude([{role:"user",content:
-        `You are an NKBA-certified kitchen designer. You decide WHERE things go — the software handles exact placement math.
+        `You are an NKBA-certified kitchen designer. Generate a cabinet layout.
 
-ROOM: ${room.width}" × ${room.depth}" × ${room.height}" ceiling (${sqft} sq ft)
-WALLS WITH CABINETS: ${wallDims}
-WINDOWS/DOORS: ${featList}
+Space: ${room.width}" wide × ${room.depth}" deep × ${room.height}" ceiling (${sqft} sq ft)
+AVAILABLE WALLS ONLY: ${wallList}
+OBSTACLES (windows/doors — do NOT place cabinets over these): ${featList}
 APPLIANCES: ${applianceList}
-UTILITIES: ${utilityList}
-OPTIONS: ${room.toCeiling?"Cabinets to ceiling.":""}${room.crownMoulding?" Crown moulding.":""}${room.bulkheadHeight>0?" Bulkhead "+room.bulkheadHeight+'" drop.':""} Box material: ${BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}.
+PLUMBING / GAS / ELECTRICAL: ${utilityList}
+ROOM OPTIONS: ${optsStr}
 
-YOUR JOB: Pick the layout type, assign each appliance/fixture to a wall with a placement hint, and choose materials. The software will calculate exact positions, fill gaps with standard cabinets, and generate matching uppers automatically.
-
-AVAILABLE HINTS for assignments:
-- "under-window" — center under the first window on that wall
-- "center" — center on the wall
-- "end-left" — flush to left end of wall
-- "end-right" — flush to right end of wall
-- "right-of-sink" — immediately right of the sink
-- "left-of-sink" — immediately left of the sink
-- "at-water" — at the water supply location
-- "at-gas" — at the gas line location
-
-RULES:
-- Sink goes near water supply if marked, or under a window, or centered
-- Range/stove goes at gas line if marked, otherwise center of a different wall from sink
-- Fridge goes at the end of a run (end-left or end-right)
-- Dishwasher goes adjacent to sink (right-of-sink or left-of-sink)
-- Pantry (tall cab) goes at the end of a wall, opposite end from fridge if same wall
-- Island only if room is ≥120" wide AND ≥144" deep
-- Spread appliances across walls for a good work triangle
+APPLIANCE RULES:
+- Place sink base cabinet at the water supply/drain location if marked
+- Place range/stove cabinet at the gas line location if marked
+- Size sink base to accommodate the specified sink width (add 3" minimum)
+- Size range opening to the specified range/stove width exactly
+- Fridge gets no cabinet — leave a gap equal to fridge width
+- Dishwasher goes adjacent to sink base (24" standard)
 
 Return ONLY valid JSON — no markdown:
-{
-  "layout": "L-Shape",
-  "material": "maple",
-  "doorStyle": "Shaker",
-  "finish": "Natural",
-  "upperHeight": 30,
-  "assignments": {
-    "sink": {"wall": "${activeWalls[0]}", "hint": "under-window"},
-    "range": {"wall": "${activeWalls[activeWalls.length>1?1:0]}", "hint": "center"},
-    "fridge": {"wall": "${activeWalls[activeWalls.length>1?1:0]}", "hint": "end-right"},
-    "dishwasher": {"wall": "${activeWalls[0]}", "hint": "right-of-sink"},
-    "pantry": {"wall": "${activeWalls[activeWalls.length>1?1:0]}", "hint": "end-left"}
-  },
-  "island": false,
-  "islandWidth": 48,
-  "islandDepth": 36,
-  "explanation": "2-3 sentences explaining your design reasoning.",
-  "tips": ["Specific actionable tip 1.", "Tip 2.", "Tip 3."],
-  "warnings": ["Any concerns about the space."]
-}`
-      }],1200);
+{"layout":"L-Shape","explanation":"2-3 sentences.","workTriangle":{"sink":60,"range":48,"fridge":72,"total":180,"valid":true,"note":"sentence."},"bestPractices":[{"rule":"Primary aisle clearance","description":"42\\" min between facing surfaces","recommended":"48\\"","met":true},{"rule":"Counter height","description":"36\\" floor to countertop","recommended":"36\\"","met":true},{"rule":"Upper cabinet elevation","description":"18\\" min between countertop and upper cab bottom","recommended":"18\\"","met":true},{"rule":"Work triangle perimeter","description":"144\\"–312\\" total","recommended":"180\\"","met":true},{"rule":"Sink landing space","description":"24\\" one side, 18\\" other","recommended":"24\\"/18\\"","met":true},{"rule":"Range landing space","description":"12\\" one side, 15\\" other","recommended":"15\\"/12\\"","met":true},{"rule":"Island clearance","description":"42\\" min on all sides","recommended":"48\\"","met":true}],"cabinets":[{"type":"base","wall":"South","w":36,"h":34.5,"d":24,"material":"maple","doorStyle":"Shaker","finish":"Natural","notes":"Sink base","x":6}],"tips":["Tip 1.","Tip 2.","Tip 3."],"warnings":[]}
 
-      const plan=parseJSON(txt);
-
-      // Run through the layout engine
-      // Compute upper cab height from room options (don't rely on AI for math)
-      if(room.toCeiling){
-        plan.upperHeight=room.height-UPPER_BTM-(room.bulkheadHeight||0);
-      } else if(room.bulkheadHeight>0){
-        plan.upperHeight=Math.min(plan.upperHeight||30,room.height-UPPER_BTM-room.bulkheadHeight);
-      }
-
-      const{cabinets,workTriangle}=LE.buildLayout(plan,room,activeWalls);
-      const checklist=buildChecklist(room,activeWalls,cabinets,workTriangle);
-
-      setRecs({
-        layout:plan.layout,
-        explanation:plan.explanation,
-        workTriangle,
-        bestPractices:checklist,
-        cabinets,
-        tips:plan.tips||[],
-        warnings:plan.warnings||[],
-        plan // keep the raw plan for regeneration
-      });
-    }catch(e){console.error(e);setErr("Could not generate — please try again.");}
+RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. Place appliances at utility locations where possible. 10-16 cabinets. Mix base, upper, one tall pantry. Island only if >=120" wide AND >=144" deep. x values must not exceed wall width minus cabinet width.${room.toCeiling?" Upper cabinets should extend to ceiling height.":""}${room.bulkheadHeight>0?" Bulkhead drops "+room.bulkheadHeight+'"  from ceiling - max upper height is '+(room.height-UPPER_BTM-room.bulkheadHeight)+'".':""}`
+      }],2500);
+      setRecs(parseJSON(txt));
+    }catch(e){setErr("Could not generate — please try again.");}
     setLoading(false);
   };
   return(
@@ -2108,20 +1698,14 @@ export default function App(){
 
   const addCab=type=>{const c=makeCab(type,type==="island"?"Island":wall,cabs,ww);setCabs(p=>[...p,c]);setSel(c.id);};
   const applyRecs=rcs=>{
-    // Layout engine already produces complete cabinet objects with IDs
-    if(rcs&&rcs.length>0&&rcs[0].id){
-      setCabs(rcs);
-    } else {
-      // Fallback for old format
-      const nc=(rcs||[]).filter(r=>DEFS[r.type]&&(r.wall==="Island"||activeWalls.includes(r.wall))).map(r=>{
-        const rw=wallWidth(r.wall,room);
-        return{id:uid(),type:r.type,w:clamp(r.w||DEFS[r.type].w,9,96),h:clamp(r.h||DEFS[r.type].h,12,96),
-          d:clamp(r.d||DEFS[r.type].d,9,36),x:clamp(r.x||3,0,rw-(r.w||DEFS[r.type].w)),
-          ix:0,iy:0,wall:r.wall||activeWalls[0],material:r.material||"maple",
-          doorStyle:r.doorStyle||"Shaker",finish:r.finish||"Natural",notes:r.notes||"",useStandard:true};
-      });
-      setCabs(nc);
-    }
+    const nc=(rcs||[]).filter(r=>DEFS[r.type]&&(r.wall==="Island"||activeWalls.includes(r.wall))).map(r=>{
+      const rw=wallWidth(r.wall,room);
+      return{id:uid(),type:r.type,w:clamp(r.w||DEFS[r.type].w,9,96),h:clamp(r.h||DEFS[r.type].h,12,96),
+        d:clamp(r.d||DEFS[r.type].d,9,36),x:clamp(r.x||3,0,rw-(r.w||DEFS[r.type].w)),
+        ix:0,iy:0,wall:r.wall||activeWalls[0],material:r.material||"maple",
+        doorStyle:r.doorStyle||"Shaker",finish:r.finish||"Natural",notes:r.notes||"",useStandard:true};
+    });
+    setCabs(nc);
   };
   const updateCab=(id,ch)=>setCabs(p=>p.map(c=>c.id===id?{...c,...ch}:c));
   const deleteCab=id=>{setCabs(p=>p.filter(c=>c.id!==id));setSel(null);};
