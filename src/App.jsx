@@ -152,6 +152,82 @@ function calcCountertopPrice(room,cabs){
   return items;
 }
 
+// Install summary — produces every field PC Cabinets Install Estimator needs
+function calcInstallSummary(cabs,room,activeWalls){
+  const t=room.trim||DEFAULT_TRIM;
+  const hw=room.hardware||DEFAULT_HARDWARE;
+  const ct=room.countertop||DEFAULT_COUNTERTOP;
+  const inst=room.install||{};
+
+  // Cabinet counts by type
+  const lowers=cabs.filter(c=>DEFS[c.type]?.row==="lower"&&!c.corner&&c.type!=="tall"&&c.type!=="corner_pantry"&&c.wall!=="Island").length;
+  const uppers=cabs.filter(c=>DEFS[c.type]?.row==="upper"&&!c.corner).length;
+  const corners=cabs.filter(c=>c.corner).length;
+  const tall=cabs.filter(c=>c.type==="tall"||c.type==="corner_pantry").length;
+  const sinkCount=cabs.filter(c=>c.notes?.toLowerCase().includes("sink")).length;
+  const islands=cabs.filter(c=>c.wall==="Island").length>0?1:0;
+
+  // Crown: LF from calcTrim + mitre cuts (2 per wall-to-wall corner where crown runs)
+  const trimQ=calcTrim(cabs,room,activeWalls);
+  const crownLF=t.crown.enabled?trimQ.crownLF:0;
+  // Crown mitre cuts: each active wall corner gets 2 cuts (inside + outside)
+  let crownCuts=0;
+  if(t.crown.enabled&&crownLF>0){
+    const aw=activeWalls;
+    if(aw.includes("South")&&aw.includes("West")) crownCuts+=2;
+    if(aw.includes("South")&&aw.includes("East")) crownCuts+=2;
+    if(aw.includes("North")&&aw.includes("West")) crownCuts+=2;
+    if(aw.includes("North")&&aw.includes("East")) crownCuts+=2;
+    // Add return cuts at wall ends (1 per open end)
+    crownCuts+=2; // minimum 2 returns
+  }
+
+  // Toe kick runs: count contiguous base cab groups per wall
+  let toekickRuns=0;
+  for(const w of [...activeWalls,"Island"]){
+    const bases=cabs.filter(c=>c.wall===w&&DEFS[c.type]?.row==="lower").sort((a,b)=>a.x-b.x);
+    if(!bases.length) continue;
+    let runs=1;
+    for(let i=1;i<bases.length;i++){
+      if(bases[i].x-(bases[i-1].x+bases[i-1].w)>2) runs++;
+    }
+    toekickRuns+=runs;
+  }
+
+  // Hardware holes: pulls × holes per type + hinge holes (not counted separately in PC Cabinets, just pull holes)
+  const hq=calcHardwareQty(cabs);
+  const pullType=hw.pulls;
+  const holesPerPull=pullType==="knob"?1:pullType==="bar"||pullType==="cup"?2:0;
+  const hardwareHoles=hq.pulls*holesPerPull;
+
+  // Pull-out / magic corner units from accessories
+  const pullouts=cabs.filter(c=>c.cornerAccessory&&["magic_corner","lemans","blind_pullout"].includes(c.cornerAccessory)).length;
+
+  // Scribe runs from fillers
+  const scribeRuns=t.fillers?.count||0;
+
+  // Countertop
+  const ctQ=calcCountertopSqFt(cabs,room);
+  const ctSqFt=ctQ.mainSqFt+ctQ.islandSqFt;
+  const bsSqFt=ct.includeBacksplash?ctQ.backsplashSqFt:0;
+
+  // Install-specific fields from room.install
+  const floatingShelves=inst.floatingShelves||0;
+  const lightingChannelLF=inst.lightingChannelLF||0;
+  const ucLightingRuns=inst.ucLightingRuns||0;
+  const soffitPanels=room.bulkheadHeight>0?(inst.soffitPanels??1):0;
+
+  return{
+    lowers,uppers,corners,tall,sink:sinkCount,islands,
+    crownLF,crownCuts,toekickRuns,hardwareHoles,
+    pullouts,scribeRuns,
+    floatingShelves,lightingChannelLF,ucLightingRuns,soffitPanels,
+    ctMaterial:CT_MATERIALS.find(m=>m.key===ct.material)?.label||"TBD",
+    ctSqFt,bsSqFt,
+    totalCabs:cabs.length,
+  };
+}
+
 function calcHardwareQty(cabs){
   let doors=0,drawers=0,hinges=0;
   for(const c of cabs){
@@ -1492,6 +1568,25 @@ CRITICAL RULES:
           <CountertopCard room={room} setRoom={setRoom}/>
         </Section>
 
+        <Section num="H" title="Install extras" desc="Additional items that affect installation labour. These show on shop drawings and feed into the PC Cabinets Install Estimator.">
+          <Card>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {[
+                ["Floating shelves","floatingShelves","Number of floating shelf units"],
+                ["Lighting channel (LF)","lightingChannelLF","Linear feet of under-cabinet LED channel"],
+                ["Under-counter lighting runs","ucLightingRuns","Number of separate lighting circuits to wire"],
+                ["Soffit / valance panels","soffitPanels","Number of soffit or light valance panels to install"],
+              ].map(([label,key,hint])=>(
+                <div key={key} style={{padding:"10px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+                  <div style={{fontSize:14,fontWeight:500,color:T.ink,marginBottom:4}}>{label}</div>
+                  <input type="number" min="0" value={(room.install||{})[key]||0} onChange={e=>setRoom(r=>({...r,install:{...(r.install||{}),[key]:parseInt(e.target.value)||0}}))} style={{...IB,width:70,textAlign:"center",padding:"7px 10px"}}/>
+                  <div style={{fontSize:11,color:T.faint,marginTop:4}}>{hint}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </Section>
+
         <Btn onClick={onNext} disabled={activeWalls.length===0} style={{fontSize:15,padding:"12px 28px"}}>Next: Get AI layout recommendations →</Btn>
       </div>
     </div>
@@ -2555,7 +2650,29 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
         <div>All dimensions in inches unless noted.</div>
         <div>Confirm all measurements on site before production.</div>
         <div>All appliances to be confirmed to fit.</div>
+        {project.cabSupplier&&<div>Cabinet supplier: {project.cabSupplier}</div>}
         {project.address&&<div>Site: {project.address}{project.city?", "+project.city:""}{project.province?" "+project.province:""}</div>}
+      </div>
+      <div style={{breakInside:"avoid",marginBottom:12}}>
+        <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Install Summary</div>
+        {(()=>{
+          const s=calcInstallSummary(cabs,room,activeWalls);
+          return<>
+            <div>{s.lowers} lowers · {s.uppers} uppers · {s.corners} corners · {s.tall} tall · {s.sink} sink · {s.islands} island</div>
+            {s.crownLF>0&&<div>Crown: {s.crownLF} LF · {s.crownCuts} mitre cuts</div>}
+            <div>Toe kick: {s.toekickRuns} run{s.toekickRuns!==1?"s":""}</div>
+            <div>Hardware: {s.hardwareHoles} holes</div>
+            {s.pullouts>0&&<div>Pull-out mechanisms: {s.pullouts}</div>}
+            {s.scribeRuns>0&&<div>Filler/scribe: {s.scribeRuns} run{s.scribeRuns!==1?"s":""}</div>}
+            {s.floatingShelves>0&&<div>Floating shelves: {s.floatingShelves}</div>}
+            {s.lightingChannelLF>0&&<div>Lighting channel: {s.lightingChannelLF} LF</div>}
+            {s.ucLightingRuns>0&&<div>Under-counter lighting: {s.ucLightingRuns} run{s.ucLightingRuns!==1?"s":""}</div>}
+            {s.soffitPanels>0&&<div>Soffit/valance panels: {s.soffitPanels}</div>}
+            {s.ctSqFt>0&&<div>Countertop: {s.ctMaterial} · {s.ctSqFt} sq ft</div>}
+            {s.bsSqFt>0&&<div>Backsplash: {s.bsSqFt} sq ft</div>}
+            <div style={{fontWeight:600,marginTop:4}}>Total: {s.totalCabs} cabinets</div>
+          </>;
+        })()}
       </div>
     </div>
   );
@@ -2872,7 +2989,7 @@ function QuoteView({cabs,setCabs,project,setProject,room,activeWalls}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:32}}>
           <div><h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:4}}>Project Quote</h1><p style={{fontSize:14,color:T.muted}}>{new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</p></div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {[["Project name","name"],["Client","client"],["Address","address"],["City","city"],["Province","province"],["Postal code","postal"],["Phone","phone"],["Email","email"]].map(([l,k])=>(
+            {[["Project name","name"],["Client","client"],["Address","address"],["City","city"],["Province","province"],["Postal code","postal"],["Phone","phone"],["Email","email"],["Cabinet supplier","cabSupplier"]].map(([l,k])=>(
               <div key={k} style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:13,color:T.muted,width:90}}>{l}</span><input value={project[k]} onChange={e=>setProject(p=>({...p,[k]:e.target.value}))} style={{...IS,width:220}}/></div>
             ))}
           </div>
@@ -3587,7 +3704,7 @@ function saveProjectList(list){localStorage.setItem(PROJECTS_KEY,JSON.stringify(
 function loadCurrentSession(){try{return JSON.parse(localStorage.getItem(CURRENT_KEY))||null;}catch{return null;}}
 function saveCurrentSession(data){localStorage.setItem(CURRENT_KEY,JSON.stringify(data));}
 
-const DEFAULT_PROJECT={name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:"",installRate:25};
+const DEFAULT_PROJECT={name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:"",installRate:25,cabSupplier:""};
 const DEFAULT_ROOM={width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",trim:{...DEFAULT_TRIM},hardware:{...DEFAULT_HARDWARE},countertop:{...DEFAULT_COUNTERTOP}};
 const DEFAULT_WALLS=["South","West"];
 
