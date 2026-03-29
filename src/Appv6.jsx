@@ -654,29 +654,11 @@ RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. Place 
 /* ─── ELEVATION CANVAS ────────────────────────────────────────────────────── */
 function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilities}){
   const drag=useRef(null);
-  const SNAP=3; // snap within 3 inches
   const PL=60,PR=30,PT=40,PB=60;
   const SW=PL+wallW*ES+PR,SH=PT+wallH*ES+PB,FY=PT+wallH*ES;
   const getCabY=c=>DEFS[c.type].row==="upper"?FY-(UPPER_BTM+c.h)*ES:FY-c.h*ES;
   const onPD=(e,id)=>{e.stopPropagation();onSel(id);const c=cabs.find(x=>x.id===id);if(c)drag.current={id,mx0:e.clientX,cx0:c.x};};
-  const onPM=e=>{
-    if(!drag.current)return;
-    const c=cabs.find(x=>x.id===drag.current.id);if(!c)return;
-    let nx=clamp(drag.current.cx0+(e.clientX-drag.current.mx0)/ES,0,wallW-c.w);
-    // Magnetic snap to neighbors in same row
-    const row=DEFS[c.type]?.row;
-    const others=cabs.filter(o=>o.id!==c.id&&o.wall===wall&&DEFS[o.type]?.row===row);
-    for(const o of others){
-      // snap left edge of dragged to right edge of other
-      if(Math.abs(nx-(o.x+o.w))<SNAP) nx=o.x+o.w;
-      // snap right edge of dragged to left edge of other
-      if(Math.abs((nx+c.w)-o.x)<SNAP) nx=o.x-c.w;
-    }
-    // snap to wall edges
-    if(nx<SNAP) nx=0;
-    if(wallW-nx-c.w<SNAP) nx=wallW-c.w;
-    onMove(drag.current.id,nx);
-  };
+  const onPM=e=>{if(!drag.current)return;const c=cabs.find(x=>x.id===drag.current.id);if(!c)return;onMove(drag.current.id,clamp(drag.current.cx0+(e.clientX-drag.current.mx0)/ES,0,wallW-c.w));};
   const onPU=()=>{drag.current=null;};
   const wallCabs=cabs.filter(c=>c.wall===wall);
   const wallFeatures=(features||[]).filter(f=>f.wall===wall);
@@ -1142,18 +1124,13 @@ function QuoteView({cabs,project,setProject}){
 }
 
 /* ─── ORDER SHEET ─────────────────────────────────────────────────────────── */
-function OrderSheet({cabs,project,room,companyProfile}){
+function OrderSheet({cabs,project,room}){
   const totalPrice=cabs.reduce((s,c)=>s+getPrice(c),0);
   const features=room.features||[];
   return(
     <div style={{flex:1,overflowY:"auto",padding:"36px 48px",maxWidth:900}}>
       <div className="fade-up">
-        <div style={{textAlign:"center",marginBottom:32}}>
-          {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:40,objectFit:"contain",marginBottom:8}}/>}
-          <h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:4}}>Manufacturer Order Sheet</h1>
-          <p style={{fontSize:14,color:T.muted}}>{companyProfile?.companyName||project.name} — {project.client||"No client"} — {new Date().toLocaleDateString()}</p>
-          {companyProfile?.phone&&<p style={{fontSize:13,color:T.faint}}>{[companyProfile.phone,companyProfile.email,companyProfile.licenseNum?("Lic: "+companyProfile.licenseNum):null].filter(Boolean).join(" · ")}</p>}
-        </div>
+        <div style={{textAlign:"center",marginBottom:32}}><h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:4}}>Manufacturer Order Sheet</h1><p style={{fontSize:14,color:T.muted}}>{project.name} — {project.client||"No client"} — {new Date().toLocaleDateString()}</p></div>
 
         {/* Customer info */}
         {(project.address||project.phone||project.email)&&(
@@ -1244,7 +1221,7 @@ function OrderSheet({cabs,project,room,companyProfile}){
 }
 
 /* ─── CLIENT PRESENTATION VIEW ───────────────────────────────────────────── */
-function PresentationView({cabs,room,project,activeWalls,companyProfile}){
+function PresentationView({cabs,room,project,activeWalls}){
   const total=cabs.reduce((s,c)=>s+getPrice(c),0);
   const tax=Math.round(total*0.08);
   const date=new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
@@ -1379,14 +1356,8 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
           paddingBottom:28,borderBottom:`2px solid ${T.oak}`,marginBottom:36}}>
           <div>
-            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:8}}>
-              {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:44,objectFit:"contain"}}/>}
-              <div>
-                <div style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.oak}}>
-                  Kitchen Design Proposal
-                </div>
-                {companyProfile?.companyName&&<div style={{fontSize:13,color:T.muted}}>{companyProfile.companyName}{companyProfile?.phone?" · "+companyProfile.phone:""}{companyProfile?.email?" · "+companyProfile.email:""}</div>}
-              </div>
+            <div style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.oak,marginBottom:4}}>
+              Kitchen Design Proposal
             </div>
             <div style={{fontSize:14,color:T.muted}}>{date}</div>
           </div>
@@ -1560,119 +1531,15 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
             This proposal is valid for 30 days.<br/>
             Pricing subject to final site measurement and material availability.
           </div>
-          <div style={{textAlign:"right",display:"flex",alignItems:"center",gap:16}}>
-            {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:36,objectFit:"contain",opacity:0.85}}/>}
-            <div>
-              <div style={{fontFamily:"'Lora',serif",fontSize:14,color:T.oak,fontWeight:600}}>{companyProfile?.companyName||"CabinetWorks"}</div>
-              {companyProfile?.phone&&<div style={{fontSize:11,color:T.faint}}>{companyProfile.phone}</div>}
-              {companyProfile?.email&&<div style={{fontSize:11,color:T.faint}}>{companyProfile.email}</div>}
-              <div style={{fontSize:12,color:T.faint,marginTop:4}}>Signature: ______________________</div>
-              <div style={{fontSize:12,color:T.faint,marginTop:2}}>Date: ___________________________</div>
-            </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontFamily:"'Lora',serif",fontSize:14,color:T.oak,fontWeight:600}}>CabinetWorks</div>
+            <div style={{fontSize:12,color:T.faint,marginTop:2}}>Signature: ______________________</div>
+            <div style={{fontSize:12,color:T.faint,marginTop:2}}>Date: ___________________________</div>
           </div>
         </div>
 
       </div>
     </>)}
-    </div>
-  );
-}
-
-/* ─── COMPANY PROFILE MODAL ───────────────────────────────────────────────── */
-const PROFILE_KEY="cw_company_profile";
-function loadProfile(){try{return JSON.parse(localStorage.getItem(PROFILE_KEY))||null;}catch{return null;}}
-function saveProfile(p){localStorage.setItem(PROFILE_KEY,JSON.stringify(p));}
-
-function CompanyProfileModal({profile,setProfile,onClose,isFirstTime}){
-  const [draft,setDraft]=useState(profile||{companyName:"",contactName:"",phone:"",email:"",address:"",city:"",province:"",postal:"",licenseNum:"",logoDataUrl:""});
-  const logoInp=useRef();
-
-  const handleLogo=f=>{
-    if(!f)return;
-    const reader=new FileReader();
-    reader.onload=e=>setDraft(d=>({...d,logoDataUrl:e.target.result}));
-    reader.readAsDataURL(f);
-  };
-
-  const handleSave=()=>{
-    if(!draft.companyName.trim()){return;}
-    saveProfile(draft);
-    setProfile(draft);
-    onClose();
-  };
-
-  const IS={...IB,padding:"9px 12px"};
-  return(
-    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(30,18,8,0.55)",backdropFilter:"blur(4px)"}} onClick={isFirstTime?undefined:onClose}>
-      <div onClick={e=>e.stopPropagation()} className="fade-up" style={{background:"#fff",borderRadius:14,width:560,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(30,18,8,0.25)"}}>
-        {/* Header */}
-        <div style={{padding:"28px 32px 0",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-          <div>
-            <h2 style={{fontFamily:"'Lora',serif",fontSize:22,fontWeight:600,color:T.oak,marginBottom:4}}>
-              {isFirstTime?"Welcome to CabinetWorks":"Company profile"}
-            </h2>
-            <p style={{fontSize:14,color:T.muted}}>
-              {isFirstTime?"Set up your company info — this appears on every quote and proposal you send.":"Update your company details."}
-            </p>
-          </div>
-          {!isFirstTime&&<button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:T.faint,cursor:"pointer",lineHeight:1}}>×</button>}
-        </div>
-
-        <div style={{padding:"24px 32px 32px"}}>
-          {/* Logo */}
-          <div style={{marginBottom:20}}>
-            <Lbl>Company logo</Lbl>
-            <div style={{display:"flex",alignItems:"center",gap:16}}>
-              <div onClick={()=>logoInp.current.click()} style={{width:80,height:80,borderRadius:10,border:`2px dashed ${draft.logoDataUrl?T.amber:T.border}`,cursor:"pointer",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",background:draft.logoDataUrl?"#fff":T.surface,flexShrink:0}}>
-                {draft.logoDataUrl
-                  ?<img src={draft.logoDataUrl} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
-                  :<span style={{fontSize:28}}>🏢</span>
-                }
-              </div>
-              <div>
-                <Btn variant="outline" style={{padding:"6px 14px",fontSize:12}} onClick={()=>logoInp.current.click()}>
-                  {draft.logoDataUrl?"Change logo":"Upload logo"}
-                </Btn>
-                {draft.logoDataUrl&&<Btn variant="ghost" style={{padding:"6px 10px",fontSize:12,color:T.red}} onClick={()=>setDraft(d=>({...d,logoDataUrl:""}))}>Remove</Btn>}
-                <p style={{fontSize:12,color:T.faint,marginTop:4}}>PNG or JPG, shown on quotes & proposals</p>
-              </div>
-              <input ref={logoInp} type="file" accept="image/png,image/jpeg" style={{display:"none"}} onChange={e=>handleLogo(e.target.files[0])}/>
-            </div>
-          </div>
-
-          {/* Fields */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}}>
-            {[
-              ["Company name *","companyName","Your Shop Name"],
-              ["Your name","contactName","Jane Smith"],
-              ["Phone","phone","519-555-1234"],
-              ["Email","email","info@yourshop.ca"],
-              ["Address","address","123 Main St"],
-              ["City","city","Chatham"],
-              ["Province / State","province","ON"],
-              ["Postal / Zip","postal","N7L 1A1"],
-            ].map(([label,key,placeholder])=>(
-              <div key={key}>
-                <Lbl>{label}</Lbl>
-                <FI value={draft[key]} onChange={e=>setDraft(d=>({...d,[key]:e.target.value}))} placeholder={placeholder} style={IS}/>
-              </div>
-            ))}
-          </div>
-
-          <div style={{marginBottom:24}}>
-            <Lbl>License / registration number <span style={{color:T.faint,fontWeight:400,textTransform:"none"}}>(optional)</span></Lbl>
-            <FI value={draft.licenseNum} onChange={e=>setDraft(d=>({...d,licenseNum:e.target.value}))} placeholder="e.g. ON-12345" style={IS}/>
-          </div>
-
-          {/* Actions */}
-          <div style={{display:"flex",gap:12,justifyContent:"flex-end"}}>
-            {!isFirstTime&&<Btn variant="outline" onClick={onClose}>Cancel</Btn>}
-            <Btn onClick={handleSave} disabled={!draft.companyName.trim()}>
-              {isFirstTime?"Get started →":"Save changes"}
-            </Btn>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1688,8 +1555,6 @@ export default function App(){
   const [sel,setSel]=useState(null);
   const [wall,setWall]=useState("South");
   const [zoom,setZoom]=useState(1);
-  const [companyProfile,setCompanyProfile]=useState(()=>loadProfile());
-  const [showProfile,setShowProfile]=useState(()=>!loadProfile());
   const zoomIn=()=>setZoom(z=>Math.min(2,+(z+0.2).toFixed(1)));
   const zoomOut=()=>setZoom(z=>Math.max(0.4,+(z-0.2).toFixed(1)));
   const zoomReset=()=>setZoom(1);
@@ -1711,15 +1576,6 @@ export default function App(){
   const deleteCab=id=>{setCabs(p=>p.filter(c=>c.id!==id));setSel(null);};
   const moveCab=(id,x)=>setCabs(p=>p.map(c=>c.id===id?{...c,x:clamp(x,0,ww-c.w)}:c));
   const moveIsland=(id,ix,iy)=>setCabs(p=>p.map(c=>c.id===id?{...c,ix,iy}:c));
-  const packTight=(targetWall,row)=>{
-    setCabs(prev=>{
-      const topack=prev.filter(c=>c.wall===targetWall&&DEFS[c.type]?.row===row).sort((a,b)=>a.x-b.x);
-      const rest=prev.filter(c=>!(c.wall===targetWall&&DEFS[c.type]?.row===row));
-      let cursor=0;
-      const packed=topack.map(c=>{const nc={...c,x:cursor};cursor+=c.w;return nc;});
-      return [...rest,...packed];
-    });
-  };
   const handleSetActiveWalls=walls=>{setActiveWalls(walls);if(!walls.includes(wall)&&walls.length>0)setWall(walls[0]);};
 
   const selCab=cabs.find(c=>c.id===sel);
@@ -1733,11 +1589,9 @@ export default function App(){
       {/* HEADER */}
       <div style={{background:"#fff",borderBottom:`1px solid ${T.border}`,height:58,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",boxShadow:"0 1px 4px rgba(44,31,14,0.06)"}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:32,width:32,objectFit:"contain",borderRadius:4}}/>}
-          <div style={{fontFamily:"'Lora',serif",fontSize:18,fontWeight:600,color:T.oak}}>{companyProfile?.companyName||"CabinetWorks"}</div>
+          <div style={{fontFamily:"'Lora',serif",fontSize:18,fontWeight:600,color:T.oak}}>CabinetWorks</div>
           <div style={{width:1,height:22,background:T.border}}/>
           <span style={{fontSize:14,color:T.muted}}>{project.name}</span>
-          <button onClick={()=>setShowProfile(true)} title="Company settings" style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:T.faint,padding:4,lineHeight:1,marginLeft:4}}>⚙</button>
         </div>
         <nav style={{display:"flex",gap:2,height:"100%",alignItems:"stretch"}}>
           {STEPS.map(s=>{
@@ -1763,13 +1617,7 @@ export default function App(){
                 <button key={v} onClick={()=>setSubView(v)} style={{padding:"0 16px",background:"none",border:"none",borderBottom:`3px solid ${subView===v?T.amber:"transparent"}`,color:subView===v?T.amber:T.muted,fontSize:13,fontWeight:subView===v?600:400,cursor:"pointer",transition:"all 0.15s"}}>{l}</button>
               ))}
               <div style={{flex:1}}/>
-              {/* Snap tools */}
-              {subView==="elevation"&&cabs.filter(c=>c.wall===wall).length>1&&(
-                <div style={{display:"flex",alignItems:"center",gap:4,marginRight:12,borderRight:`1px solid ${T.border}`,paddingRight:12}}>
-                  <button onClick={()=>packTight(wall,"lower")} title="Pack lower cabinets tight from left" style={{height:28,padding:"0 10px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:T.muted,fontWeight:600,whiteSpace:"nowrap"}}>Pack lower ◀▶</button>
-                  <button onClick={()=>packTight(wall,"upper")} title="Pack upper cabinets tight from left" style={{height:28,padding:"0 10px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:T.muted,fontWeight:600,whiteSpace:"nowrap"}}>Pack upper ◀▶</button>
-                </div>
-              )}
+              {/* Zoom controls */}
               <div style={{display:"flex",alignItems:"center",gap:4,marginRight:16}}>
                 <button onClick={zoomOut} style={{width:28,height:28,background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.muted}}>−</button>
                 <button onClick={zoomReset} style={{minWidth:46,height:28,background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:T.muted,fontFamily:"monospace"}}>{Math.round(zoom*100)}%</button>
@@ -1793,11 +1641,9 @@ export default function App(){
           <PropertiesPanel c={selCab} update={updateCab} del={deleteCab} activeWalls={[...activeWalls,"Island"]}/>
         </>}
         {view==="quote"&&<QuoteView cabs={cabs} project={project} setProject={setProject}/>}
-        {view==="present"&&<PresentationView cabs={cabs} room={room} project={project} activeWalls={activeWalls} companyProfile={companyProfile}/>}
-        {view==="order"&&<OrderSheet cabs={cabs} project={project} room={room} companyProfile={companyProfile}/>}
+        {view==="present"&&<PresentationView cabs={cabs} room={room} project={project} activeWalls={activeWalls}/>}
+        {view==="order"&&<OrderSheet cabs={cabs} project={project} room={room}/>}
       </div>
-      {/* Company profile modal */}
-      {showProfile&&<CompanyProfileModal profile={companyProfile} setProfile={setCompanyProfile} onClose={()=>setShowProfile(false)} isFirstTime={!companyProfile}/>}
     </div>
   );
 }
