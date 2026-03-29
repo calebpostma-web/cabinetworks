@@ -1583,15 +1583,6 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
               stroke={isOverlap?"#CC4422":isSel?T.amber:de} strokeWidth={isSel||isOverlap?2:1} rx={1}/>
             {isLower&&<rect x={cx} y={cyy+bodyH} width={cw} height={tkH} fill={tf} rx={0}/>}
 
-            {/* Sink visual */}
-            {isSink&&(
-              <g>
-                <rect x={cx+cw*0.15} y={cyy+bodyH*0.25} width={cw*0.7} height={bodyH*0.5} fill="#8AAABB" stroke="#6A8898" strokeWidth={1} rx={3}/>
-                <circle cx={cx+cw/2} cy={cyy+bodyH*0.5} r={cw*0.06} fill="#5A7888"/>
-                <line x1={cx+cw/2} y1={cyy+bodyH*0.2} x2={cx+cw/2} y2={cyy+bodyH*0.35} stroke="#8A9098" strokeWidth={2} strokeLinecap="round"/>
-              </g>
-            )}
-
             {/* Range/stove visual — 4 burner circles, fixed size */}
             {isRange&&(
               <g>
@@ -1615,8 +1606,8 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
               </g>
             )}
 
-            {/* Front layout (doors/drawers) — only if not special appliance */}
-            {!isSink&&!isRange&&!isFridge&&(()=>{
+            {/* Front layout (doors/drawers) — only if not range or fridge */}
+            {!isRange&&!isFridge&&(()=>{
               const fl=c.frontLayout||"doors";
               const pad=2,innerW=cw-pad*2,innerH=bodyH-pad*2;
               const drawerGap=3;
@@ -1717,7 +1708,7 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
 
             {isSel&&<rect x={cx-3} y={cyy-3} width={cw+6} height={ch+6} fill="none" stroke={T.amber} strokeWidth={2} strokeDasharray="6,3" rx={2}/>}
             {isOverlap&&!isSel&&<rect x={cx-2} y={cyy-2} width={cw+4} height={ch+4} fill="none" stroke="#CC4422" strokeWidth={1.5} strokeDasharray="4,3" rx={2}/>}
-            <text x={cx+cw/2} y={FY+18} textAnchor="middle" fill={isSel?T.amber:T.faint} fontSize={11} fontFamily="DM Sans">{c.w}"</text>
+            <text x={cx+cw/2} y={isLower?FY+18:cyy-8} textAnchor="middle" fill={isSel?T.amber:T.faint} fontSize={cw<50?9:11} fontFamily="DM Sans">{(cw>=40||isSel)?c.w+'"':""}</text>
           </g>
         );
       })}
@@ -2002,15 +1993,24 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk}){
   const isBase=DEFS[c.type]?.row==="lower";
   const hWarning=isBase&&(c.h<30||c.h>36)?(c.h<30?"Below standard — may be too low":"Above standard — countertop unusually high"):null;
   const IS={...IB,padding:"7px 10px"};
-  const DF=({label,k,stdList})=>(
+  const DF=({label,k,stdList})=>{
+    const curVal=c[k];
+    const opts=[...stdList];
+    // If current value isn't in standard list, add it so dropdown shows correctly
+    if(useStd&&opts.length>0&&!opts.includes(curVal)){
+      opts.push(curVal);
+      opts.sort((a,b)=>a-b);
+    }
+    return(
     <div>
       <div style={{fontSize:11,color:T.faint,marginBottom:4,textAlign:"center"}}>{label}</div>
-      {useStd&&stdList.length>0
-        ?<select value={c[k]} onChange={e=>update(c.id,{[k]:parseFloat(e.target.value)})} style={{...IS,padding:"7px 4px",textAlign:"center"}}>{stdList.map(v=><option key={v} value={v}>{v}"</option>)}</select>
-        :<input type="number" value={c[k]} onChange={e=>update(c.id,{[k]:parseFloat(e.target.value)||0})} style={{...IS,padding:"7px 4px",textAlign:"center"}}/>
+      {useStd&&opts.length>0
+        ?<select value={curVal} onChange={e=>update(c.id,{[k]:parseFloat(e.target.value)})} style={{...IS,padding:"7px 4px",textAlign:"center"}}>{opts.map(v=><option key={v} value={v}>{v}"{!stdList.includes(v)?" *":""}</option>)}</select>
+        :<input type="number" value={curVal} onChange={e=>update(c.id,{[k]:parseFloat(e.target.value)||0})} style={{...IS,padding:"7px 4px",textAlign:"center"}}/>
       }
     </div>
-  );
+    );
+  };
 
   // Bulk apply helper
   const bulkApply=(props)=>{
@@ -2347,7 +2347,7 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
               {/* Toekick */}
               {isLower&&<rect x={cx} y={cy+bodyH} width={cw} height={tkH} fill="#3A2A14" stroke="#555" strokeWidth={0.6} rx={0}/>}
               {/* Door lines */}
-              {!isSink&&!isRange&&fl==="doors"&&nDoors===2&&<line x1={cx+cw/2} y1={cy+2} x2={cx+cw/2} y2={cy+bodyH-2} stroke="#888" strokeWidth={0.6}/>}
+              {!isRange&&fl==="doors"&&nDoors===2&&<line x1={cx+cw/2} y1={cy+2} x2={cx+cw/2} y2={cy+bodyH-2} stroke="#888" strokeWidth={0.6}/>}
               {/* Drawer lines for drawer layouts */}
               {fl.includes("drawer")&&(()=>{
                 const nDraw=fl==="2-drawer"?2:fl==="3-drawer"?3:fl==="4-drawer"?4:fl==="drawer-over-doors"?1:fl==="3-drawer-over-door"?3:0;
@@ -2356,8 +2356,6 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
                   <line key={i} x1={cx+3} y1={cy+drawH*(i+1)} x2={cx+cw-3} y2={cy+drawH*(i+1)} stroke="#888" strokeWidth={0.6}/>
                 ));
               })()}
-              {/* Sink basin */}
-              {isSink&&<rect x={cx+cw*0.15} y={cy+bodyH*0.25} width={cw*0.7} height={bodyH*0.45} fill="none" stroke="#888" strokeWidth={0.8} rx={2}/>}
               {/* Range burners */}
               {isRange&&[[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=>(
                 <circle key={i} cx={cx+cw/2+ox*Math.min(cw*0.2,10)} cy={cy+bodyH/2+oy*Math.min(bodyH*0.2,10)} r={4} fill="none" stroke="#888" strokeWidth={0.8}/>
@@ -2799,10 +2797,9 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
             <g key={c.id}>
               <rect x={cx} y={cyy} width={cw} height={bodyH} fill={isFridge?"#D4C8B8":isRange?"#C8A888":bf} stroke={de} strokeWidth={0.8} rx={1}/>
               {isLower&&<rect x={cx} y={cyy+bodyH} width={cw} height={tkH} fill={tf} rx={0}/>}
-              {isSink&&<rect x={cx+cw*0.15} y={cyy+bodyH*0.25} width={cw*0.7} height={bodyH*0.5} fill="#8AAABB" stroke="#6A8898" strokeWidth={0.8} rx={2}/>}
               {isRange&&(()=>{const br=4,gap=Math.min(cw*0.22,12);return [[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=><g key={i}><circle cx={cx+cw/2+ox*gap} cy={cyy+bodyH/2+oy*gap} r={br} fill="none" stroke="#8A7060" strokeWidth={1}/></g>);})()}
               {isFridge&&<line x1={cx+cw*0.75} y1={cyy+bodyH*0.2} x2={cx+cw*0.75} y2={cyy+bodyH*0.8} stroke="#A09080" strokeWidth={2} strokeLinecap="round"/>}
-              {!isSink&&!isRange&&!isFridge&&Array.from({length:nD}).map((_,i)=>{
+              {!isRange&&!isFridge&&Array.from({length:nD}).map((_,i)=>{
                 const ddx=cx+i*dw;
                 if(c.doorStyle==="Open Shelf"){
                   const nSh=Math.max(2,Math.floor(bodyH/35));
@@ -3429,6 +3426,11 @@ export default function App(){
     });
   };
   const handleSetActiveWalls=walls=>{setActiveWalls(walls);if(!walls.includes(wall)&&walls.length>0)setWall(walls[0]);};
+
+  // Keep wall in sync — if current wall isn't active, switch to first active wall
+  useEffect(()=>{
+    if(activeWalls.length>0&&!activeWalls.includes(wall)) setWall(activeWalls[0]);
+  },[activeWalls,wall]);
 
   const selCab=cabs.find(c=>c.id===sel);
   const total=cabs.reduce((s,c)=>s+getPrice(c),0);
