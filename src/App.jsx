@@ -356,8 +356,13 @@ const LE={
     for(const p of placed){
       // Fridge is a gap — don't generate a cabinet
       if(p.role!=="fridge"){
+        // Smart front layout for anchor cabs
+        let fl="doors";
+        if(p.role==="sink") fl="doors"; // sink base needs open interior for plumbing
+        if(p.role==="dishwasher") fl="doors"; // dishwasher is an appliance opening
+        if(p.role==="pantry") fl="doors"; // pantry gets pullout shelves note
         allCabs.push({type:p.type||"base",wall:wallName,w:p.w,h:p.h||34.5,d:p.d||24,x:p.x,
-          material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:p.notes||""});
+          material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:p.notes||"",frontLayout:fl});
       }
     }
 
@@ -367,11 +372,93 @@ const LE={
       const fills=LE.fillSeg(seg.x,seg.endX);
       for(const f of fills){
         allCabs.push({type:"base",wall:wallName,w:f.w,h:34.5,d:24,x:f.x,
-          material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:""});
+          material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:"",frontLayout:"doors"});
       }
     }
 
-    // Generate uppers — skip windows, doors, range hood zone, and fridge zone
+    // ── SMART FRONT LAYOUT ASSIGNMENT ──
+    // Look at each base cab's neighbors and assign appropriate front layouts
+    const baseCabs=allCabs.filter(c=>c.type==="base");
+    baseCabs.sort((a,b)=>a.x-b.x);
+
+    const findAnchor=(role)=>placed.find(p=>p.role===role);
+    const sinkA=findAnchor("sink"), rangeA=findAnchor("range"), fridgeA=findAnchor("fridge"), dwA=findAnchor("dishwasher");
+
+    // Helper: is cab immediately adjacent to an anchor?
+    const adjacentTo=(cab,anchor)=>{
+      if(!anchor) return false;
+      return Math.abs(cab.x+cab.w-anchor.x)<2||Math.abs(anchor.x+anchor.w-cab.x)<2;
+    };
+    // Helper: is cab on the left or right side of anchor?
+    const leftOf=(cab,anchor)=>anchor&&Math.abs(cab.x+cab.w-anchor.x)<2;
+    const rightOf=(cab,anchor)=>anchor&&Math.abs(anchor.x+anchor.w-cab.x)<2;
+
+    for(const cab of baseCabs){
+      // Skip appliance cabs — they already have notes
+      if(cab.notes&&cab.notes.length>0) continue;
+
+      // Adjacent to range → pots & pans drawer stack
+      if(adjacentTo(cab,rangeA)){
+        cab.frontLayout="4-drawer";
+        cab.notes="Pots & pans";
+        continue;
+      }
+
+      // Adjacent to sink (not dishwasher side) → cutlery drawer over doors
+      if(adjacentTo(cab,sinkA)){
+        // Check if dishwasher is on this same side
+        if(dwA&&adjacentTo(cab,dwA)) continue; // dishwasher is here, skip
+        cab.frontLayout="drawer-over-doors";
+        cab.notes="Cutlery drawer";
+        continue;
+      }
+
+      // Adjacent to dishwasher (opposite side from sink) → waste bin
+      if(adjacentTo(cab,dwA)&&!adjacentTo(cab,sinkA)){
+        cab.frontLayout="doors";
+        cab.notes="Waste/recycling pullout";
+        continue;
+      }
+
+      // Adjacent to fridge → tray dividers / spice pullout
+      if(adjacentTo(cab,fridgeA)){
+        if(cab.w<=18){
+          cab.frontLayout="doors";
+          cab.notes="Spice pullout";
+        } else {
+          cab.frontLayout="drawer-over-doors";
+          cab.notes="Tray dividers";
+        }
+        continue;
+      }
+
+      // First/last cab on wall and not adjacent to anything special → standard
+      const idx=baseCabs.indexOf(cab);
+      if(idx===0&&cab.x<=3){
+        // First cab at wall start — finished end
+        cab.notes="Finished end";
+      }
+      if(idx===baseCabs.length-1&&cab.x+cab.w>=wallW-3){
+        cab.notes=cab.notes?"Finished end":"Finished end";
+      }
+
+      // Wide cabs (30"+) that haven't been assigned → drawer-over-doors is better than plain doors
+      if(!cab.notes&&cab.w>=30&&cab.frontLayout==="doors"){
+        cab.frontLayout="drawer-over-doors";
+      }
+    }
+
+    // ── FRIDGE FILLER STRIP ──
+    // Fridge needs clearance — if fridge is not at wall end, add a note
+    if(fridgeA){
+      const fridgeEnd=fridgeA.x+fridgeA.w;
+      if(fridgeA.x>3&&fridgeA.x<wallW-fridgeA.w-3){
+        // Fridge not at a wall end — both sides may need filler consideration
+        // (fillers are handled visually, not as separate cabs, but noted)
+      }
+    }
+
+    // ── SMART UPPER CABINET ASSIGNMENT ──
     const rangeItem=placed.find(p=>p.role==="range");
     const fridgeItem=placed.find(p=>p.role==="fridge");
     const upperObs=LE.upperObstacles(wallName,features,
@@ -403,8 +490,32 @@ const LE={
         const fills=LE.fillSeg(seg.x,seg.endX);
         for(const f of fills){
           allCabs.push({type:"upper",wall:wallName,w:f.w,h:upperH||30,d:12,x:f.x,
-            material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:""});
+            material:style.material,doorStyle:style.doorStyle,finish:style.finish,notes:"",frontLayout:"doors"});
         }
+      }
+    }
+
+    // Smart upper assignments: glass doors flanking range hood, above-sink upper, tray dividers above fridge
+    const upperCabs=allCabs.filter(c=>c.type==="upper");
+    for(const uc of upperCabs){
+      // Above sink → could remain doors (you look through window anyway)
+      if(sinkA&&uc.x>=sinkA.x-2&&uc.x+uc.w<=sinkA.x+sinkA.w+2){
+        uc.notes="Above sink";
+        continue;
+      }
+      // Flanking range hood zone → glass insert display
+      if(rangeItem){
+        const hoodLeft=rangeItem.x-2,hoodRight=rangeItem.x+rangeItem.w+2;
+        if(Math.abs(uc.x+uc.w-hoodLeft)<3||Math.abs(uc.x-hoodRight)<3){
+          uc.doorStyle="Glass Insert";
+          uc.notes="Display";
+          continue;
+        }
+      }
+      // Above fridge area → tray dividers
+      if(fridgeItem&&uc.x>=fridgeItem.x-2&&uc.x+uc.w<=fridgeItem.x+fridgeItem.w+2){
+        uc.notes="Tray dividers";
+        continue;
       }
     }
 
