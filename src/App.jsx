@@ -112,6 +112,54 @@ const cornerAccLabel=c=>{
   if(!c.cornerAccessory||c.cornerAccessory==="none") return"";
   return CORNER_ACCESSORIES.find(a=>a.key===c.cornerAccessory)?.label||"";
 };
+
+// Fractional inch formatter: 34.5 → "34 1/2", 22.625 → "22 5/8", 36 → "36"
+const toFrac=(n)=>{
+  if(n==null||isNaN(n)) return"0";
+  const whole=Math.floor(n);
+  const rem=Math.round((n-whole)*16)/16; // snap to 1/16
+  if(rem===0) return String(whole);
+  const fracs=[[1/16,"1/16"],[1/8,"1/8"],[3/16,"3/16"],[1/4,"1/4"],[5/16,"5/16"],[3/8,"3/8"],[7/16,"7/16"],[1/2,"1/2"],[9/16,"9/16"],[5/8,"5/8"],[11/16,"11/16"],[3/4,"3/4"],[13/16,"13/16"],[7/8,"7/8"],[15/16,"15/16"]];
+  const best=fracs.reduce((a,b)=>Math.abs(b[0]-rem)<Math.abs(a[0]-rem)?b:a);
+  return whole>0?`${whole} ${best[1]}`:best[1];
+};
+
+// Cabinet code generator: B3DWR, U2D, BCD2D, TSC, etc.
+const cabCode=(c)=>{
+  const fl=c.frontLayout||"doors";
+  const prefix=c.type==="upper"||c.type==="corner_upper"||c.type==="blind_upper"?"U":
+    c.type==="tall"||c.type==="corner_pantry"?"T":
+    c.type==="island"?"I":
+    c.type==="vanity"?"V":"B";
+  // Corner types
+  if(c.type==="corner_base") return"BCD2D";
+  if(c.type==="blind_base") return"BBC";
+  if(c.type==="corner_upper") return"UCD";
+  if(c.type==="blind_upper") return"UBC";
+  if(c.type==="corner_pantry") return"TCP";
+  // Special notes
+  const nl=c.notes?.toLowerCase()||"";
+  if(nl.includes("sink")) return prefix+"SNK";
+  if(nl.includes("range")||nl.includes("stove")) return prefix+"RNG";
+  if(nl.includes("fridge")||nl.includes("refrigerator")) return prefix+"FRG";
+  if(nl.includes("dishwasher")) return"DWA";
+  if(nl.includes("pantry")) return prefix+"PNT";
+  if(nl.includes("waste")||nl.includes("garbage")) return prefix+"W450";
+  // Front layout
+  if(fl==="2-drawer") return prefix+"2DWR";
+  if(fl==="3-drawer") return prefix+"3DWR";
+  if(fl==="4-drawer") return prefix+"4DWR";
+  if(fl==="drawer-over-doors") return prefix+"DWR1D";
+  if(fl==="doors-over-drawer") return prefix+"1DDWR";
+  if(fl==="3-drawer-over-door") return prefix+"3DWR1D";
+  // Standard doors
+  const nDoors=c.w>=27?2:1;
+  return prefix+(nDoors===1?"1D":"2D");
+};
+
+// Filler strip codes
+const fillerCode=(w)=>w<=1?"SL":"BSP";
+
 const wallWidth=(wall,room)=>["East","West"].includes(wall)?room.depth:room.width;
 
 /* ─── LAYOUT ENGINE ───────────────────────────────────────────────────────── */
@@ -1379,7 +1427,7 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
 }
 
 /* ─── FLOOR PLAN CANVAS ───────────────────────────────────────────────────── */
-function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland}){
+function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland,onMoveWallCab}){
   const drag=useRef(null);
   const FS=2.4,P=64,W=P*2+room.width*FS,H=P*2+room.depth*FS;
   const L=P,Tp=P,R=P+room.width*FS,B=P+room.depth*FS;
@@ -1407,8 +1455,34 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland}){
     }
   };
 
-  const onPD=(e,c)=>{if(c.wall!=="Island")return;e.stopPropagation();onSel(c.id);drag.current={id:c.id,mx0:e.clientX,my0:e.clientY,ix0:c.ix||0,iy0:c.iy||0};};
-  const onPM=e=>{if(!drag.current)return;onMoveIsland(drag.current.id,drag.current.ix0+(e.clientX-drag.current.mx0)/FS,drag.current.iy0+(e.clientY-drag.current.my0)/FS);};
+  const onPD=(e,c)=>{
+    e.stopPropagation();onSel(c.id);
+    if(c.corner) return; // corner cabs are fixed
+    if(c.wall==="Island"){
+      drag.current={id:c.id,mode:"island",mx0:e.clientX,my0:e.clientY,ix0:c.ix||0,iy0:c.iy||0};
+    } else {
+      // Wall cab: drag along the wall axis
+      const axis=["South","North"].includes(c.wall)?"x":"y";
+      drag.current={id:c.id,mode:"wall",wall:c.wall,axis,mx0:axis==="x"?e.clientX:e.clientY,cx0:c.x};
+    }
+  };
+  const onPM=e=>{
+    if(!drag.current)return;
+    const d=drag.current;
+    if(d.mode==="island"){
+      onMoveIsland(d.id,d.ix0+(e.clientX-d.mx0)/FS,d.iy0+(e.clientY-d.my0)/FS);
+    } else if(d.mode==="wall"){
+      const ww=wallWidth(d.wall,room);
+      const c=cabs.find(x=>x.id===d.id);if(!c)return;
+      const mousePos=d.axis==="x"?e.clientX:e.clientY;
+      // For East wall, mouse Y moves down = x increases. For West, Y down = x increases too.
+      // For South/North, mouse X right = x increases.
+      let nx=d.cx0+(mousePos-d.mx0)/FS;
+      // East/West: positive mouse-Y = increasing x (from North end toward South)
+      nx=clamp(Math.round(nx),0,ww-c.w);
+      onMoveWallCab(d.id,nx);
+    }
+  };
   const onPU=()=>{drag.current=null;};
 
   return(
@@ -1486,7 +1560,7 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland}){
         const lbl=isCorner?cornerLbl:isSink?"SINK":isRange?"RANGE":isFridge?"FRIDGE":`${c.w}"`;
         const lblColor=isCorner?"#6A5030":isSink?"#5A8898":isRange?"#7A5030":isFridge?"#607888":isSel?T.amber:T.muted;
         return(
-          <g key={c.id} style={{cursor:isIsland?"grab":"pointer"}} onPointerDown={e=>onPD(e,c)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
+          <g key={c.id} style={{cursor:isCorner?"pointer":"grab"}} onPointerDown={e=>onPD(e,c)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
             <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} stroke={isSel?T.amber:T.borderDark} strokeWidth={isSel?2:1} strokeDasharray={isUpper?"3,2":"none"} rx={2}/>
             {/* Corner diagonal indicator */}
             {isCorner&&(()=>{
@@ -1746,6 +1820,389 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk}){
         <div style={{fontSize:30,fontWeight:700,fontFamily:"'Lora',serif",color:T.oak}}>${getPrice(c).toLocaleString()}</div>
         <div style={{fontSize:12,color:T.muted,marginTop:6,lineHeight:1.7}}>{c.w}"W × {c.h}"H × {c.d}"D<br/>{MATS[c.material]?.label} · {c.doorStyle} · {FRONT_LAYOUTS.find(fl=>fl.key===(c.frontLayout||"doors"))?.label}</div>
       </div>
+    </div>
+  );
+}
+
+/* ─── SHOP DRAWINGS ───────────────────────────────────────────────────────── */
+function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
+  const features=room.features||[];
+  const appliances=room.appliances||[];
+  const utilities=room.utilities||[];
+
+  // Number all cabs sequentially
+  const numbered=cabs.map((c,i)=>({...c,num:i+1}));
+
+  // Group by type for schedule
+  const bases=numbered.filter(c=>DEFS[c.type]?.row==="lower"&&c.type!=="island");
+  const uppers=numbered.filter(c=>DEFS[c.type]?.row==="upper");
+  const talls=numbered.filter(c=>c.type==="tall"||c.type==="corner_pantry");
+  const islands=numbered.filter(c=>c.type==="island");
+
+  // Title block
+  const TitleBlock=({title,pageNum,totalPages})=>(
+    <div style={{display:"flex",borderTop:"2px solid #333",marginTop:16}}>
+      <div style={{flex:"0 0 200px",borderRight:"1px solid #333",padding:"8px 12px",display:"flex",alignItems:"center",gap:10}}>
+        {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:28,objectFit:"contain"}}/>}
+        <span style={{fontWeight:700,fontSize:13}}>{companyProfile?.companyName||"CabinetWorks"}</span>
+      </div>
+      <div style={{flex:1,borderRight:"1px solid #333",padding:"8px 12px"}}>
+        <div style={{fontSize:14,fontWeight:700}}>{title}</div>
+        <div style={{fontSize:11,color:"#666"}}>{project.name} — {project.client||"Client TBD"}</div>
+      </div>
+      <div style={{flex:"0 0 140px",borderRight:"1px solid #333",padding:"8px 12px",fontSize:11}}>
+        <div>Sales: {companyProfile?.contactName||"—"}</div>
+        <div>Customer: {project.client||"—"}</div>
+      </div>
+      <div style={{flex:"0 0 120px",padding:"8px 12px",fontSize:11}}>
+        <div>Printed: {new Date().toLocaleDateString()}</div>
+        <div style={{fontWeight:700}}>Page {pageNum} of {totalPages}</div>
+      </div>
+    </div>
+  );
+
+  // Schedule table
+  const ScheduleTable=({title,items})=>{
+    if(!items.length) return null;
+    return(
+      <div style={{marginBottom:16}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,border:"1px solid #333"}}>
+          <thead>
+            <tr style={{background:"#E8E0D5"}}>
+              <th colSpan={5} style={{padding:"4px 8px",textAlign:"left",fontWeight:700,fontSize:12,borderBottom:"1px solid #333"}}>{title}</th>
+            </tr>
+            <tr style={{background:"#F4EFE7"}}>
+              {["NO","NAME","WIDTH","HEIGHT","DEPTH"].map(h=>(
+                <th key={h} style={{padding:"3px 8px",textAlign:"left",fontWeight:600,fontSize:10,borderBottom:"1px solid #999",borderRight:"1px solid #CCC"}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(c=>(
+              <tr key={c.id} style={{borderBottom:"1px solid #DDD"}}>
+                <td style={{padding:"3px 8px",fontWeight:700,borderRight:"1px solid #CCC",width:36}}>{c.num}</td>
+                <td style={{padding:"3px 8px",borderRight:"1px solid #CCC",fontWeight:500}}>{cabCode(c)}</td>
+                <td style={{padding:"3px 8px",borderRight:"1px solid #CCC"}}>{toFrac(c.w)}</td>
+                <td style={{padding:"3px 8px",borderRight:"1px solid #CCC"}}>{toFrac(c.h)}</td>
+                <td style={{padding:"3px 8px"}}>{toFrac(c.d)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Spec block
+  const SpecBlock=()=>(
+    <div style={{fontSize:11,lineHeight:1.8,columnCount:2,columnGap:24}}>
+      <div style={{breakInside:"avoid",marginBottom:12}}>
+        <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Cabinet Details</div>
+        <div>Exterior: {MATS[cabs[0]?.material]?.label||"Maple"}</div>
+        <div>Interior: {BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}</div>
+        <div>Door/Drawer Style: {cabs[0]?.doorStyle||"Shaker"}</div>
+        <div>Finish: {cabs[0]?.finish||"Natural"}</div>
+      </div>
+      <div style={{breakInside:"avoid",marginBottom:12}}>
+        <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Mouldings</div>
+        <div>Crown: {room.crownMoulding?"Yes":"None"}</div>
+        <div>To Ceiling: {room.toCeiling?"Yes":"No"}</div>
+        {room.bulkheadHeight>0&&<div>Bulkhead: {room.bulkheadHeight}" drop</div>}
+        <div>Toekick: 4" standard</div>
+      </div>
+      <div style={{breakInside:"avoid",marginBottom:12}}>
+        <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Appliances & Fixtures</div>
+        {appliances.length>0?appliances.map(a=><div key={a.id}>{a.label}: {a.w}"W × {a.h}"H × {a.d}"D</div>):<div>TBD</div>}
+      </div>
+      <div style={{breakInside:"avoid",marginBottom:12}}>
+        <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Accessories</div>
+        {numbered.filter(c=>c.cornerAccessory&&c.cornerAccessory!=="none").map(c=>(
+          <div key={c.id}>#{c.num} — {cornerAccLabel(c)}</div>
+        ))}
+        {numbered.filter(c=>c.cornerAccessory&&c.cornerAccessory!=="none").length===0&&<div>None specified</div>}
+      </div>
+      {utilities.length>0&&(
+        <div style={{breakInside:"avoid",marginBottom:12}}>
+          <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Plumbing / Gas / Electrical</div>
+          {utilities.map(u=><div key={u.id}>{u.icon} {u.label} — {u.wall} wall at {u.x}" from left{u.notes?" ("+u.notes+")":""}</div>)}
+        </div>
+      )}
+      <div style={{breakInside:"avoid",marginBottom:12}}>
+        <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>General Notes</div>
+        <div>All dimensions in inches unless noted.</div>
+        <div>Confirm all measurements on site before production.</div>
+        <div>All appliances to be confirmed to fit.</div>
+        {project.address&&<div>Site: {project.address}{project.city?", "+project.city:""}{project.province?" "+project.province:""}</div>}
+      </div>
+    </div>
+  );
+
+  // Wall elevation SVG with dimensions and numbering
+  const WallElevationSVG=({wall})=>{
+    const ww=wallWidth(wall,room);
+    const wh=room.height;
+    // Get cabs on this wall (including corner cabs)
+    const regularCabs=numbered.filter(c=>c.wall===wall&&!c.corner);
+    const cornerCabsOnWall=numbered.filter(c=>c.corner&&CORNER_MAP[c.corner]?.walls?.includes(wall)).map(c=>{
+      const pos=cornerOnWall(c,wall,room);
+      return pos?{...c,x:pos.x}:null;
+    }).filter(Boolean);
+    const wallCabs=[...regularCabs,...cornerCabsOnWall].sort((a,b)=>a.x-b.x);
+    const wallFeats=features.filter(f=>f.wall===wall);
+    if(!wallCabs.length&&!wallFeats.length) return null;
+
+    const S=3.8; // scale
+    const PL=70,PR=60,PT=50,PB=80;
+    const SW=PL+ww*S+PR,SH=PT+wh*S+PB;
+    const FY=PT+wh*S; // floor Y
+
+    const getCabY=c=>DEFS[c.type]?.row==="upper"?FY-(UPPER_BTM+c.h)*S:FY-c.h*S;
+
+    // Dimension helper
+    const HDim=({x1,x2,y,label})=>{
+      const mid=(x1+x2)/2;
+      return(
+        <g>
+          <line x1={x1} y1={y} x2={x2} y2={y} stroke="#333" strokeWidth={0.8}/>
+          <line x1={x1} y1={y-4} x2={x1} y2={y+4} stroke="#333" strokeWidth={0.8}/>
+          <line x1={x2} y1={y-4} x2={x2} y2={y+4} stroke="#333" strokeWidth={0.8}/>
+          <text x={mid} y={y-5} textAnchor="middle" fontSize={9} fontFamily="'DM Sans',sans-serif" fill="#333">{label}</text>
+        </g>
+      );
+    };
+    const VDim=({x,y1,y2,label})=>{
+      const mid=(y1+y2)/2;
+      return(
+        <g>
+          <line x1={x} y1={y1} x2={x} y2={y2} stroke="#333" strokeWidth={0.8}/>
+          <line x1={x-4} y1={y1} x2={x+4} y2={y1} stroke="#333" strokeWidth={0.8}/>
+          <line x1={x-4} y1={y2} x2={x+4} y2={y2} stroke="#333" strokeWidth={0.8}/>
+          <text x={x+8} y={mid+4} fontSize={9} fontFamily="'DM Sans',sans-serif" fill="#333">{label}</text>
+        </g>
+      );
+    };
+
+    const lowerCabs=wallCabs.filter(c=>DEFS[c.type]?.row==="lower");
+    const upperCabs=wallCabs.filter(c=>DEFS[c.type]?.row==="upper");
+
+    return(
+      <svg width={SW} height={SH} style={{display:"block",background:"#fff",border:"1px solid #CCC"}}>
+        {/* Wall outline */}
+        <rect x={PL} y={PT} width={ww*S} height={wh*S} fill="#F8F6F2" stroke="#999" strokeWidth={1}/>
+
+        {/* Windows & doors */}
+        {wallFeats.map(f=>{
+          const fx=PL+f.x*S, fw=f.width*S;
+          const ff=f.fromFloor??(f.type==="door"?0:40);
+          const fh2=(f.height??(f.type==="door"?80:36))*S;
+          const fy=FY-(ff+(f.height??(f.type==="door"?80:36)))*S;
+          if(f.type==="window"){
+            return(
+              <g key={f.id}>
+                <rect x={fx} y={fy} width={fw} height={fh2} fill="#D8E8F0" stroke="#6A9EBE" strokeWidth={1}/>
+                <line x1={fx+fw/2} y1={fy} x2={fx+fw/2} y2={fy+fh2} stroke="#6A9EBE" strokeWidth={0.6}/>
+                <line x1={fx} y1={fy+fh2/2} x2={fx+fw} y2={fy+fh2/2} stroke="#6A9EBE" strokeWidth={0.6}/>
+              </g>
+            );
+          }
+          return(
+            <g key={f.id}>
+              <rect x={fx} y={FY-fh2} width={fw} height={fh2} fill="#F8F6F2" stroke="none"/>
+              <line x1={fx} y1={FY-fh2} x2={fx} y2={FY} stroke="#666" strokeWidth={1.5}/>
+              <line x1={fx+fw} y1={FY-fh2} x2={fx+fw} y2={FY} stroke="#666" strokeWidth={1.5}/>
+              <path d={`M ${fx} ${FY-fh2} A ${fw} ${fw} 0 0 1 ${fx+fw} ${FY-fh2}`} fill="none" stroke="#999" strokeWidth={0.6} strokeDasharray="4,3"/>
+            </g>
+          );
+        })}
+
+        {/* Countertop line */}
+        {lowerCabs.length>0&&(()=>{
+          const minX=Math.min(...lowerCabs.map(c=>c.x));
+          const maxX=Math.max(...lowerCabs.map(c=>c.x+c.w));
+          return <rect x={PL+minX*S-2} y={FY-lowerCabs[0].h*S-2*S} width={(maxX-minX)*S+4} height={2*S} fill="#8B6340" rx={1}/>;
+        })()}
+
+        {/* Cabinet boxes */}
+        {wallCabs.map(c=>{
+          const cx=PL+c.x*S, cy=getCabY(c), cw=c.w*S, ch=c.h*S;
+          const isLower=DEFS[c.type]?.row==="lower";
+          const tkH=isLower?TOEKICK*S:0, bodyH=ch-tkH;
+          const isSink=isLower&&notesHas(c,"sink"),isRange=isLower&&(notesHas(c,"range")||notesHas(c,"stove"));
+          const fl=c.frontLayout||"doors";
+          const nDoors=cw>=27*S?2:1;
+
+          return(
+            <g key={c.id}>
+              {/* Box */}
+              <rect x={cx} y={cy} width={cw} height={bodyH} fill="#F4EFE7" stroke="#555" strokeWidth={1} rx={1}/>
+              {/* Toekick */}
+              {isLower&&<rect x={cx+3} y={cy+bodyH} width={cw-6} height={tkH} fill="#3A2A14" stroke="#555" strokeWidth={0.6} rx={1}/>}
+              {/* Door lines */}
+              {!isSink&&!isRange&&fl==="doors"&&nDoors===2&&<line x1={cx+cw/2} y1={cy+2} x2={cx+cw/2} y2={cy+bodyH-2} stroke="#888" strokeWidth={0.6}/>}
+              {/* Drawer lines for drawer layouts */}
+              {fl.includes("drawer")&&(()=>{
+                const nDraw=fl==="2-drawer"?2:fl==="3-drawer"?3:fl==="4-drawer"?4:fl==="drawer-over-doors"?1:fl==="3-drawer-over-door"?3:0;
+                const drawH=fl==="drawer-over-doors"?bodyH*0.22:fl==="3-drawer-over-door"?bodyH*0.55/3:bodyH/Math.max(nDraw,1);
+                return Array.from({length:nDraw}).map((_,i)=>(
+                  <line key={i} x1={cx+3} y1={cy+drawH*(i+1)} x2={cx+cw-3} y2={cy+drawH*(i+1)} stroke="#888" strokeWidth={0.6}/>
+                ));
+              })()}
+              {/* Sink basin */}
+              {isSink&&<rect x={cx+cw*0.15} y={cy+bodyH*0.25} width={cw*0.7} height={bodyH*0.45} fill="none" stroke="#888" strokeWidth={0.8} rx={2}/>}
+              {/* Range burners */}
+              {isRange&&[[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=>(
+                <circle key={i} cx={cx+cw/2+ox*Math.min(cw*0.2,10)} cy={cy+bodyH/2+oy*Math.min(bodyH*0.2,10)} r={4} fill="none" stroke="#888" strokeWidth={0.8}/>
+              ))}
+              {/* "F" finished end markers */}
+              {c.x===0&&<text x={cx+4} y={cy+bodyH-6} fontSize={8} fontWeight={700} fill="#333">F</text>}
+              {c.x+c.w>=ww-1&&<text x={cx+cw-10} y={cy+bodyH-6} fontSize={8} fontWeight={700} fill="#333">F</text>}
+              {/* Cabinet number — bold, centered below */}
+              <text x={cx+cw/2} y={FY+16} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily="'DM Sans',sans-serif" fill="#1E1208"># {c.num}</text>
+              {/* Accessory label */}
+              {c.cornerAccessory&&c.cornerAccessory!=="none"&&(
+                <text x={cx+cw/2} y={cy+bodyH/2+4} textAnchor="middle" fontSize={8} fill="#666" fontFamily="'DM Sans',sans-serif">{cornerAccLabel(c).toUpperCase()}</text>
+              )}
+              {isSink&&<text x={cx+cw/2} y={FY+28} textAnchor="middle" fontSize={8} fill="#666">SINK</text>}
+              {isRange&&<text x={cx+cw/2} y={FY+28} textAnchor="middle" fontSize={8} fill="#666">RANGE</text>}
+            </g>
+          );
+        })}
+
+        {/* Floor line */}
+        <line x1={PL} y1={FY} x2={PL+ww*S} y2={FY} stroke="#333" strokeWidth={2}/>
+
+        {/* ─── DIMENSION CHAINS ─── */}
+        {/* Individual lower cab widths */}
+        {lowerCabs.map(c=>(
+          <HDim key={`lw${c.id}`} x1={PL+c.x*S} x2={PL+(c.x+c.w)*S} y={FY+40} label={toFrac(c.w)}/>
+        ))}
+        {/* Individual upper cab widths */}
+        {upperCabs.map(c=>(
+          <HDim key={`uw${c.id}`} x1={PL+c.x*S} x2={PL+(c.x+c.w)*S} y={PT-14} label={toFrac(c.w)}/>
+        ))}
+        {/* Overall wall dimension */}
+        <HDim x1={PL} x2={PL+ww*S} y={FY+60} label={toFrac(ww)}/>
+
+        {/* Vertical dimensions on right side */}
+        {lowerCabs.length>0&&(
+          <VDim x={PL+ww*S+16} y1={FY-lowerCabs[0].h*S} y2={FY} label={toFrac(lowerCabs[0].h)}/>
+        )}
+        {upperCabs.length>0&&(
+          <VDim x={PL+ww*S+16} y1={PT+((wh-UPPER_BTM-upperCabs[0].h)*S)} y2={PT+(wh-UPPER_BTM)*S} label={toFrac(upperCabs[0].h)}/>
+        )}
+        {/* Total height */}
+        <VDim x={PL+ww*S+40} y1={PT} y2={FY} label={toFrac(wh)}/>
+
+        {/* Upper zone / gap dimension */}
+        {lowerCabs.length>0&&upperCabs.length>0&&(
+          <VDim x={PL+ww*S+16} y1={FY-lowerCabs[0].h*S-2*S} y2={PT+(wh-UPPER_BTM)*S} label={toFrac(UPPER_BTM-lowerCabs[0].h-2)}/>
+        )}
+
+        {/* Wall label */}
+        <text x={PL+ww*S/2} y={PT-30} textAnchor="middle" fontSize={14} fontWeight={700} fontFamily="'DM Sans',sans-serif" fill="#333">KITCHEN — WALL: {wall.toUpperCase()}</text>
+      </svg>
+    );
+  };
+
+  // Count total pages: 1 cover + 1 per wall with cabs
+  const wallsWithContent=activeWalls.filter(w=>
+    cabs.some(c=>c.wall===w)||cabs.some(c=>c.corner&&CORNER_MAP[c.corner]?.walls?.includes(w))||features.some(f=>f.wall===w)
+  );
+  const totalPages=1+wallsWithContent.length+(islands.length>0?1:0);
+
+  if(cabs.length===0){
+    return(
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+        <div style={{fontSize:32}}>📐</div>
+        <div style={{fontFamily:"'Lora',serif",fontSize:20,color:T.oak}}>No cabinets designed yet</div>
+        <div style={{fontSize:14,color:T.muted}}>Go to Design and add cabinets, then come back for shop drawings.</div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{flex:1,overflowY:"auto",background:"#E8E4DE"}}>
+      <style>{`
+        @media print {
+          @page { margin: 0.4in; size: letter landscape; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .no-print { display: none !important; }
+          .shop-page { break-after: page; background: white !important; box-shadow: none !important; }
+        }
+      `}</style>
+
+      {/* Toolbar */}
+      <div className="no-print" style={{background:"#fff",borderBottom:"1px solid #CCC",padding:"10px 32px",display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:14,color:T.muted,flex:1}}>
+          Professional shop drawings — {totalPages} pages. Print or save as PDF (landscape recommended).
+        </span>
+        <Btn onClick={()=>window.print()} style={{padding:"8px 20px"}}>🖨 Print / Save as PDF</Btn>
+      </div>
+
+      {/* PAGE 1 — COVER SHEET */}
+      <div className="shop-page" style={{maxWidth:1100,margin:"16px auto",background:"#fff",padding:"40px 48px",boxShadow:"0 2px 16px rgba(0,0,0,0.08)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+          <div style={{display:"flex",alignItems:"center",gap:16}}>
+            {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:48,objectFit:"contain"}}/>}
+            <div>
+              <div style={{fontSize:22,fontWeight:700}}>{companyProfile?.companyName||"CabinetWorks"}</div>
+              {companyProfile?.phone&&<div style={{fontSize:12,color:"#666"}}>{companyProfile.phone}{companyProfile?.email?" · "+companyProfile.email:""}</div>}
+            </div>
+          </div>
+          <div style={{textAlign:"right",fontSize:12,color:"#666"}}>
+            <div style={{fontSize:16,fontWeight:700,color:"#333"}}>{project.name}</div>
+            <div>Customer: {project.client||"TBD"}</div>
+            {project.address&&<div>{project.address}{project.city?", "+project.city:""}</div>}
+            <div>Date: {new Date().toLocaleDateString()}</div>
+          </div>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
+          {/* Left: Schedule tables */}
+          <div>
+            <ScheduleTable title="BASE CABINETS" items={bases}/>
+            <ScheduleTable title="UPPER CABINETS" items={uppers}/>
+            <ScheduleTable title="TALL CABINETS" items={talls}/>
+            {islands.length>0&&<ScheduleTable title="ISLAND" items={islands}/>}
+          </div>
+          {/* Right: Spec block */}
+          <div>
+            <SpecBlock/>
+          </div>
+        </div>
+
+        {/* Room dimensions summary */}
+        <div style={{marginTop:16,padding:"10px 14px",background:"#F4EFE7",border:"1px solid #D4C4A8",borderRadius:6,fontSize:12}}>
+          Room: {toFrac(room.width)}" × {toFrac(room.depth)}" × {toFrac(room.height)}" ceiling ({(room.width/12).toFixed(1)}' × {(room.depth/12).toFixed(1)}') · Walls: {activeWalls.join(", ")} · {cabs.length} cabinets total
+        </div>
+
+        <TitleBlock title={`KITCHEN — PLAN`} pageNum={1} totalPages={totalPages}/>
+      </div>
+
+      {/* PAGES 2+ — WALL ELEVATIONS */}
+      {wallsWithContent.map((wall,wi)=>(
+        <div key={wall} className="shop-page" style={{maxWidth:1100,margin:"16px auto",background:"#fff",padding:"40px 48px",boxShadow:"0 2px 16px rgba(0,0,0,0.08)"}}>
+          <div style={{overflowX:"auto"}}>
+            <WallElevationSVG wall={wall}/>
+          </div>
+          <TitleBlock title={`KITCHEN — WALL: ${wall.toUpperCase()}`} pageNum={wi+2} totalPages={totalPages}/>
+        </div>
+      ))}
+
+      {/* Island page if applicable */}
+      {islands.length>0&&(
+        <div className="shop-page" style={{maxWidth:1100,margin:"16px auto",background:"#fff",padding:"40px 48px",boxShadow:"0 2px 16px rgba(0,0,0,0.08)"}}>
+          <div style={{fontSize:18,fontWeight:700,marginBottom:16}}>KITCHEN — ISLAND</div>
+          {islands.map(c=>(
+            <div key={c.id} style={{padding:16,border:"1px solid #CCC",borderRadius:8,marginBottom:12}}>
+              <div style={{fontSize:14,fontWeight:700}}>#{c.num} — {cabCode(c)} — {toFrac(c.w)}" × {toFrac(c.h)}" × {toFrac(c.d)}"</div>
+              <div style={{fontSize:12,color:"#666",marginTop:4}}>{MATS[c.material]?.label} · {c.doorStyle} · {FRONT_LAYOUTS.find(fl=>fl.key===(c.frontLayout||"doors"))?.label} · {c.finish||"Natural"}</div>
+              {c.notes&&<div style={{fontSize:12,color:"#999",marginTop:2}}>{c.notes}</div>}
+            </div>
+          ))}
+          <TitleBlock title="KITCHEN — ISLAND" pageNum={totalPages} totalPages={totalPages}/>
+        </div>
+      )}
     </div>
   );
 }
@@ -2389,6 +2846,11 @@ export default function App(){
   const updateBulk=(ids,ch)=>setCabs(p=>p.map(c=>ids.includes(c.id)?{...c,...ch}:c));
   const deleteCab=id=>{setCabs(p=>p.filter(c=>c.id!==id));setSel(null);};
   const moveCab=(id,x)=>setCabs(p=>p.map(c=>c.id===id?{...c,x:clamp(x,0,ww-c.w)}:c));
+  const moveWallCab=(id,x)=>setCabs(p=>p.map(c=>{
+    if(c.id!==id)return c;
+    const cw=wallWidth(c.wall,room);
+    return{...c,x:clamp(x,0,cw-c.w)};
+  }));
   const moveIsland=(id,ix,iy)=>setCabs(p=>p.map(c=>c.id===id?{...c,ix,iy}:c));
   const packTight=(targetWall,row)=>{
     setCabs(prev=>{
@@ -2404,7 +2866,7 @@ export default function App(){
   const selCab=cabs.find(c=>c.id===sel);
   const total=cabs.reduce((s,c)=>s+getPrice(c),0);
 
-  const STEPS=[{id:"setup",n:"01",label:"Room setup"},{id:"recs",n:"02",label:"AI recommendations"},{id:"design",n:"03",label:"Design"},{id:"present",n:"04",label:"Client view"},{id:"quote",n:"05",label:"Quote"},{id:"order",n:"06",label:"Order sheet"}];
+  const STEPS=[{id:"setup",n:"01",label:"Room setup"},{id:"recs",n:"02",label:"AI recommendations"},{id:"design",n:"03",label:"Design"},{id:"present",n:"04",label:"Client view"},{id:"shop",n:"05",label:"Shop drawings"},{id:"quote",n:"06",label:"Quote"},{id:"order",n:"07",label:"Order sheet"}];
 
   return(
     <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg,overflow:"hidden"}}>
@@ -2464,7 +2926,7 @@ export default function App(){
               <div style={{transform:`scale(${zoom})`,transformOrigin:"top left",display:"inline-block"}}>
                 {subView==="elevation"
                   ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]} utilities={room.utilities||[]} room={room}/>
-                  :<FloorPlanCanvas cabs={cabs} room={room} sel={sel} onSel={setSel} onMoveIsland={moveIsland}/>
+                  :<FloorPlanCanvas cabs={cabs} room={room} sel={sel} onSel={setSel} onMoveIsland={moveIsland} onMoveWallCab={moveWallCab}/>
                 }
               </div>
             </div>
@@ -2473,6 +2935,7 @@ export default function App(){
         </>}
         {view==="quote"&&<QuoteView cabs={cabs} project={project} setProject={setProject}/>}
         {view==="present"&&<PresentationView cabs={cabs} room={room} project={project} activeWalls={activeWalls} companyProfile={companyProfile}/>}
+        {view==="shop"&&<ShopDrawings cabs={cabs} room={room} project={project} activeWalls={activeWalls} companyProfile={companyProfile}/>}
         {view==="order"&&<OrderSheet cabs={cabs} project={project} room={room} companyProfile={companyProfile}/>}
       </div>
       {/* Company profile modal */}
