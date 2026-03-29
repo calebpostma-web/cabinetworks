@@ -27,27 +27,10 @@ const DEFS={
 const MATS={thermofoil:{label:"Thermofoil",rate:16},painted_mdf:{label:"Painted MDF",rate:22},maple:{label:"Maple",rate:40},cherry:{label:"Cherry",rate:56},walnut:{label:"Walnut",rate:70}};
 const BASE_P={base:175,upper:140,tall:310,island:395,vanity:190};
 const DOOR_STYLES=["Shaker","Flat Panel","Raised Panel","Beadboard","Glass Insert","Open Shelf"];
-const BOX_MATS={melamine_white:{label:"White Melamine"},melamine_maple:{label:"Maple Melamine"},melamine_black:{label:"Black Melamine"},birch_ply:{label:"Birch Plywood"},particle:{label:"Particle Board"}};
-const APPLIANCE_TYPES=[
-  {key:"fridge",label:"Refrigerator",defW:36,defH:70,defD:30},
-  {key:"range",label:"Range / Stove",defW:30,defH:36,defD:25},
-  {key:"dishwasher",label:"Dishwasher",defW:24,defH:34,defD:24},
-  {key:"microwave",label:"Microwave / OTR",defW:30,defH:17,defD:15},
-  {key:"rangeHood",label:"Range Hood",defW:30,defH:6,defD:20},
-  {key:"sink",label:"Sink",defW:33,defH:10,defD:22},
-];
-const UTILITY_TYPES=[
-  {key:"water",label:"Water supply",icon:"💧"},
-  {key:"drain",label:"Drain",icon:"⬇"},
-  {key:"gas",label:"Gas line",icon:"🔥"},
-  {key:"electrical",label:"Electrical / outlet",icon:"⚡"},
-];
 
 let _uid=1;
 const uid=()=>`c${_uid++}`;
 const fid=()=>`f${_uid++}`;
-const aid=()=>`a${_uid++}`;
-const utid=()=>`u${_uid++}`;
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const getPrice=c=>Math.round(BASE_P[c.type]+(c.w*c.h/144)*(MATS[c.material]?.rate??40));
 const notesHas=(c,kw)=>c.notes?.toLowerCase().includes(kw);
@@ -167,166 +150,6 @@ function FeatureEditor({features,setFeatures,activeWalls,room}){
           ))}
         </div>
       }
-    </Card>
-  );
-}
-
-/* ─── APPLIANCE EDITOR ─────────────────────────────────────────────────────── */
-function ApplianceEditor({appliances,setAppliances,activeWalls,room}){
-  const add=type=>{
-    const def=APPLIANCE_TYPES.find(a=>a.key===type);
-    if(!def)return;
-    const wall=activeWalls[0]||"South";
-    const ww=wallWidth(wall,room);
-    setAppliances(a=>[...a,{id:aid(),type:type,label:def.label,wall,x:Math.round(ww/2-def.defW/2),w:def.defW,h:def.defH,d:def.defD}]);
-  };
-  const upd=(id,ch)=>setAppliances(a=>a.map(x=>x.id===id?{...x,...ch}:x));
-  const del=id=>setAppliances(a=>a.filter(x=>x.id!==id));
-  const IS={...IB,padding:"5px 8px",fontSize:13};
-  // Which appliance types haven't been added yet?
-  const usedTypes=appliances.map(a=>a.type);
-  const available=APPLIANCE_TYPES.filter(t=>!usedTypes.includes(t.key));
-
-  return(
-    <Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h3 style={{fontSize:16,fontWeight:600,color:T.ink}}>Appliances</h3>
-        {available.length>0&&(
-          <select onChange={e=>{if(e.target.value){add(e.target.value);e.target.value="";}}} defaultValue="" style={{...IS,width:"auto",padding:"6px 12px",fontSize:12,color:T.amber,fontWeight:600,borderColor:T.amber,background:"#fff"}}>
-            <option value="" disabled>+ Add appliance</option>
-            {available.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
-          </select>
-        )}
-      </div>
-      {appliances.length===0
-        ?<p style={{fontSize:13,color:T.faint,fontStyle:"italic"}}>No appliances added yet. The AI will assume standard sizes if left empty.</p>
-        :<div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {appliances.map(a=>{
-            const emoji={fridge:"🧊",range:"🔥",dishwasher:"🫧",microwave:"📡",rangeHood:"💨",sink:"🚰"}[a.type]||"📦";
-            return(
-              <div key={a.id} style={{display:"grid",gridTemplateColumns:"auto 1fr 60px 60px 60px 90px auto",gap:8,alignItems:"center",padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
-                <span style={{fontSize:18}}>{emoji}</span>
-                <div style={{fontSize:14,fontWeight:500,color:T.ink}}>{a.label}</div>
-                <div>
-                  <div style={{fontSize:10,color:T.faint,marginBottom:2,textAlign:"center"}}>W"</div>
-                  <input type="number" value={a.w} onChange={e=>upd(a.id,{w:parseInt(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center"}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:T.faint,marginBottom:2,textAlign:"center"}}>H"</div>
-                  <input type="number" value={a.h} onChange={e=>upd(a.id,{h:parseInt(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center"}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:T.faint,marginBottom:2,textAlign:"center"}}>D"</div>
-                  <input type="number" value={a.d} onChange={e=>upd(a.id,{d:parseInt(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center"}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Wall</div>
-                  <select value={a.wall} onChange={e=>upd(a.id,{wall:e.target.value})} style={{...IS,width:"100%"}}>
-                    {activeWalls.map(w=><option key={w} value={w}>{w}</option>)}
-                  </select>
-                </div>
-                <button onClick={()=>del(a.id)} style={{background:"none",border:"none",color:T.red,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1}}>×</button>
-              </div>
-            );
-          })}
-        </div>
-      }
-      <p style={{fontSize:12,color:T.faint,marginTop:10}}>Appliance dimensions help the AI place cabinets with proper clearance.</p>
-    </Card>
-  );
-}
-
-/* ─── UTILITIES EDITOR (gas, plumbing, electrical) ────────────────────────── */
-function UtilitiesEditor({utilities,setUtilities,activeWalls,room}){
-  const add=type=>{
-    const def=UTILITY_TYPES.find(u=>u.key===type);
-    if(!def)return;
-    const wall=activeWalls[0]||"South";
-    const ww=wallWidth(wall,room);
-    setUtilities(u=>[...u,{id:utid(),type:type,label:def.label,icon:def.icon,wall,x:Math.round(ww/2),fromFloor:6,notes:""}]);
-  };
-  const upd=(id,ch)=>setUtilities(u=>u.map(x=>x.id===id?{...x,...ch}:x));
-  const del=id=>setUtilities(u=>u.filter(x=>x.id!==id));
-  const IS={...IB,padding:"5px 8px",fontSize:13};
-
-  return(
-    <Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h3 style={{fontSize:16,fontWeight:600,color:T.ink}}>Plumbing, gas & electrical</h3>
-        <div style={{display:"flex",gap:6}}>
-          {UTILITY_TYPES.map(t=>(
-            <button key={t.key} onClick={()=>add(t.key)} title={`Add ${t.label}`} style={{padding:"5px 10px",borderRadius:6,fontSize:12,fontWeight:600,background:T.surface,border:`1px solid ${T.border}`,color:T.muted,cursor:"pointer"}}>
-              {t.icon}
-            </button>
-          ))}
-        </div>
-      </div>
-      {utilities.length===0
-        ?<p style={{fontSize:13,color:T.faint,fontStyle:"italic"}}>Mark gas lines, water supply, drains, and outlets so the AI avoids placing cabinets over them.</p>
-        :<div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {utilities.map(u=>(
-            <div key={u.id} style={{display:"grid",gridTemplateColumns:"auto 1fr 80px 80px 1fr auto",gap:8,alignItems:"center",padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
-              <span style={{fontSize:18}}>{u.icon}</span>
-              <div style={{fontSize:14,fontWeight:500,color:T.ink}}>{u.label}</div>
-              <div>
-                <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Wall</div>
-                <select value={u.wall} onChange={e=>upd(u.id,{wall:e.target.value})} style={{...IS,width:"100%"}}>
-                  {activeWalls.map(w=><option key={w} value={w}>{w}</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:T.faint,marginBottom:2}}>From left"</div>
-                <input type="number" value={u.x} onChange={e=>upd(u.id,{x:parseInt(e.target.value)||0})} style={{...IS,width:"100%"}}/>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Notes</div>
-                <input type="text" value={u.notes} onChange={e=>upd(u.id,{notes:e.target.value})} style={{...IS,width:"100%"}} placeholder="e.g. main shutoff"/>
-              </div>
-              <button onClick={()=>del(u.id)} style={{background:"none",border:"none",color:T.red,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1}}>×</button>
-            </div>
-          ))}
-        </div>
-      }
-    </Card>
-  );
-}
-
-/* ─── ROOM OPTIONS CARD ───────────────────────────────────────────────────── */
-function RoomOptionsCard({room,setRoom}){
-  const Toggle=({label,desc,value,onChange})=>(
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
-      <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>{label}</div><div style={{fontSize:12,color:T.faint}}>{desc}</div></div>
-      <button onClick={()=>onChange(!value)} style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:value?T.amber:T.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
-        <span style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",left:value?22:2,display:"block"}}/>
-      </button>
-    </div>
-  );
-  const IS={...IB,padding:"7px 10px"};
-  return(
-    <Card>
-      <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:14}}>Room options</h3>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        <Toggle label="Cabinets to ceiling" desc="Upper cabinets extend to ceiling height" value={room.toCeiling} onChange={v=>setRoom(r=>({...r,toCeiling:v}))}/>
-        <Toggle label="Crown moulding" desc="Decorative trim at top of uppers" value={room.crownMoulding} onChange={v=>setRoom(r=>({...r,crownMoulding:v}))}/>
-        <div style={{padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>Bulkhead / soffit</div><div style={{fontSize:12,color:T.faint}}>Dropped ceiling section above uppers</div></div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <input type="number" value={room.bulkheadHeight} onChange={e=>setRoom(r=>({...r,bulkheadHeight:parseInt(e.target.value)||0}))} style={{...IS,width:64,textAlign:"center"}} placeholder="0"/>
-              <span style={{fontSize:13,color:T.faint}}>inches</span>
-            </div>
-          </div>
-          {room.bulkheadHeight>0&&<p style={{fontSize:12,color:T.amber,marginTop:6}}>Uppers will be limited to {room.height-UPPER_BTM-room.bulkheadHeight}" max height.</p>}
-        </div>
-        <div style={{padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>Cabinet box material</div><div style={{fontSize:12,color:T.faint}}>Interior box construction (separate from door finish)</div></div>
-            <select value={room.boxMaterial} onChange={e=>setRoom(r=>({...r,boxMaterial:e.target.value}))} style={{...IS,width:180}}>
-              {Object.entries(BOX_MATS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </div>
-        </div>
-      </div>
     </Card>
   );
 }
@@ -465,24 +288,6 @@ CRITICAL RULES:
             activeWalls={activeWalls} room={room}/>
         </div>
 
-        <div style={{marginBottom:24}}>
-          <ApplianceEditor
-            appliances={room.appliances||[]}
-            setAppliances={a=>setRoom(r=>({...r,appliances:typeof a==="function"?a(r.appliances||[]):a}))}
-            activeWalls={activeWalls} room={room}/>
-        </div>
-
-        <div style={{marginBottom:24}}>
-          <UtilitiesEditor
-            utilities={room.utilities||[]}
-            setUtilities={u=>setRoom(r=>({...r,utilities:typeof u==="function"?u(r.utilities||[]):u}))}
-            activeWalls={activeWalls} room={room}/>
-        </div>
-
-        <div style={{marginBottom:24}}>
-          <RoomOptionsCard room={room} setRoom={setRoom}/>
-        </div>
-
         <Btn onClick={onNext} disabled={activeWalls.length===0} style={{fontSize:15,padding:"12px 28px"}}>Next: Get AI layout recommendations →</Btn>
       </div>
     </div>
@@ -533,36 +338,17 @@ function RecommendationsView({room,activeWalls,onApply,onSkip}){
       const sqft=((room.width/12)*(room.depth/12)).toFixed(1);
       const wallList=activeWalls.join(", ");
       const featList=(room.features||[]).map(f=>`${f.type} on ${f.wall} wall at ${f.x}" from left, ${f.width}" wide`).join("; ")||"none";
-      const applianceList=(room.appliances||[]).map(a=>`${a.label}: ${a.w}"W × ${a.h}"H × ${a.d}"D on ${a.wall} wall`).join("; ")||"none specified (use standard sizes)";
-      const utilityList=(room.utilities||[]).map(u=>`${u.label} on ${u.wall} wall at ${u.x}" from left${u.notes?` (${u.notes})`:""}`).join("; ")||"none marked";
-      const roomOpts=[];
-      if(room.toCeiling) roomOpts.push("Cabinets to ceiling: YES — uppers should reach ceiling height");
-      if(room.crownMoulding) roomOpts.push("Crown moulding: YES — account for 3-4\" trim at top of uppers");
-      if(room.bulkheadHeight>0) roomOpts.push(`Bulkhead/soffit: ${room.bulkheadHeight}" drop from ceiling — limits upper cabinet height`);
-      roomOpts.push(`Box material: ${BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}`);
-      const optsStr=roomOpts.join(". ");
       const txt=await callClaude([{role:"user",content:
         `You are an NKBA-certified kitchen designer. Generate a cabinet layout.
 
 Space: ${room.width}" wide × ${room.depth}" deep × ${room.height}" ceiling (${sqft} sq ft)
 AVAILABLE WALLS ONLY: ${wallList}
 OBSTACLES (windows/doors — do NOT place cabinets over these): ${featList}
-APPLIANCES: ${applianceList}
-PLUMBING / GAS / ELECTRICAL: ${utilityList}
-ROOM OPTIONS: ${optsStr}
-
-APPLIANCE RULES:
-- Place sink base cabinet at the water supply/drain location if marked
-- Place range/stove cabinet at the gas line location if marked
-- Size sink base to accommodate the specified sink width (add 3" minimum)
-- Size range opening to the specified range/stove width exactly
-- Fridge gets no cabinet — leave a gap equal to fridge width
-- Dishwasher goes adjacent to sink base (24" standard)
 
 Return ONLY valid JSON — no markdown:
 {"layout":"L-Shape","explanation":"2-3 sentences.","workTriangle":{"sink":60,"range":48,"fridge":72,"total":180,"valid":true,"note":"sentence."},"bestPractices":[{"rule":"Primary aisle clearance","description":"42\\" min between facing surfaces","recommended":"48\\"","met":true},{"rule":"Counter height","description":"36\\" floor to countertop","recommended":"36\\"","met":true},{"rule":"Upper cabinet elevation","description":"18\\" min between countertop and upper cab bottom","recommended":"18\\"","met":true},{"rule":"Work triangle perimeter","description":"144\\"–312\\" total","recommended":"180\\"","met":true},{"rule":"Sink landing space","description":"24\\" one side, 18\\" other","recommended":"24\\"/18\\"","met":true},{"rule":"Range landing space","description":"12\\" one side, 15\\" other","recommended":"15\\"/12\\"","met":true},{"rule":"Island clearance","description":"42\\" min on all sides","recommended":"48\\"","met":true}],"cabinets":[{"type":"base","wall":"South","w":36,"h":34.5,"d":24,"material":"maple","doorStyle":"Shaker","finish":"Natural","notes":"Sink base","x":6}],"tips":["Tip 1.","Tip 2.","Tip 3."],"warnings":[]}
 
-RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. Place appliances at utility locations where possible. 10-16 cabinets. Mix base, upper, one tall pantry. Island only if >=120" wide AND >=144" deep. x values must not exceed wall width minus cabinet width.${room.toCeiling?" Upper cabinets should extend to ceiling height.":""}${room.bulkheadHeight>0?" Bulkhead drops "+room.bulkheadHeight+'"  from ceiling - max upper height is '+(room.height-UPPER_BTM-room.bulkheadHeight)+'".':""}`
+RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. 10–16 cabinets. Mix base, upper, one tall pantry. Island only if ≥120" wide AND ≥144" deep. x values must not exceed wall width minus cabinet width.`
       }],2500);
       setRecs(parseJSON(txt));
     }catch(e){setErr("Could not generate — please try again.");}
@@ -576,10 +362,6 @@ RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. Place 
         <div style={{display:"flex",gap:8,marginBottom:24,flexWrap:"wrap"}}>
           {activeWalls.map(w=><Badge key={w} color="amber">{w} wall</Badge>)}
           {(room.features||[]).map(f=><Badge key={f.id} color="green">{f.type==="window"?"🪟":"🚪"} {f.wall}</Badge>)}
-          {(room.appliances||[]).map(a=><Badge key={a.id} color="amber">{a.label}</Badge>)}
-          {(room.utilities||[]).map(u=><Badge key={u.id} color="green">{u.icon} {u.label}</Badge>)}
-          {room.toCeiling&&<Badge color="amber">To ceiling</Badge>}
-          {room.crownMoulding&&<Badge color="amber">Crown moulding</Badge>}
         </div>
         {!recs&&(
           <div>
@@ -652,7 +434,7 @@ RULES: Only walls ${wallList}. Avoid windows/doors when placing cabinets. Place 
 }
 
 /* ─── ELEVATION CANVAS ────────────────────────────────────────────────────── */
-function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilities}){
+function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features}){
   const drag=useRef(null);
   const PL=60,PR=30,PT=40,PB=60;
   const SW=PL+wallW*ES+PR,SH=PT+wallH*ES+PB,FY=PT+wallH*ES;
@@ -717,23 +499,6 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
             </g>
           );
         }
-      })}
-
-      {/* ── UTILITY MARKERS ── */}
-      {(utilities||[]).filter(u=>u.wall===wall).map(u=>{
-        const ux=PL+u.x*ES;
-        const uy=FY-(u.fromFloor||6)*ES;
-        const colors={water:"#4A90D9",drain:"#6B7B8D",gas:"#E07030",electrical:"#D4A017"};
-        const col=colors[u.type]||T.muted;
-        return(
-          <g key={u.id}>
-            <circle cx={ux} cy={uy} r={8} fill={col} fillOpacity={0.2} stroke={col} strokeWidth={1.5}/>
-            <text x={ux} y={uy+4} textAnchor="middle" fill={col} fontSize={10} fontFamily="DM Sans" fontWeight={700}>
-              {u.type==="water"?"W":u.type==="drain"?"D":u.type==="gas"?"G":"E"}
-            </text>
-            <text x={ux} y={uy-14} textAnchor="middle" fill={col} fontSize={9} fontFamily="DM Sans">{u.label}</text>
-          </g>
-        );
       })}
 
       {/* Countertops */}
@@ -880,29 +645,6 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland}){
         }
       })}
 
-      {/* ── UTILITY MARKERS on floor plan ── */}
-      {(room.utilities||[]).map(u=>{
-        const colors={water:"#4A90D9",drain:"#6B7B8D",gas:"#E07030",electrical:"#D4A017"};
-        const col=colors[u.type]||T.muted;
-        const r=7;
-        let ux,uy;
-        switch(u.wall){
-          case"South":ux=L+u.x*FS;uy=B-r;break;
-          case"North":ux=L+u.x*FS;uy=Tp+r;break;
-          case"East":ux=R-r;uy=Tp+u.x*FS;break;
-          case"West":ux=L+r;uy=Tp+u.x*FS;break;
-          default:return null;
-        }
-        return(
-          <g key={u.id}>
-            <circle cx={ux} cy={uy} r={r} fill={col} fillOpacity={0.25} stroke={col} strokeWidth={1.5}/>
-            <text x={ux} y={uy+3.5} textAnchor="middle" fill={col} fontSize={8} fontFamily="DM Sans" fontWeight={700}>
-              {u.type==="water"?"W":u.type==="drain"?"D":u.type==="gas"?"G":"E"}
-            </text>
-          </g>
-        );
-      })}
-
       {/* Cabinets */}
       {cabs.map(c=>{
         const r=getRect(c);if(!r)return null;
@@ -942,10 +684,6 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland}){
       <text x={L+116} y={B+43} fill={T.faint} fontSize={11} fontFamily="DM Sans">Upper</text>
       <rect x={L+160} y={B+34} width={12} height={10} fill={T.winFill} stroke={T.winStroke} strokeWidth={1.5} rx={1}/>
       <text x={L+176} y={B+43} fill={T.faint} fontSize={11} fontFamily="DM Sans">Window</text>
-      {(room.utilities||[]).length>0&&<>
-        <circle cx={L+236} cy={B+39} r={5} fill="#4A90D9" fillOpacity={0.3} stroke="#4A90D9" strokeWidth={1}/>
-        <text x={L+244} y={B+43} fill={T.faint} fontSize={11} fontFamily="DM Sans">Utility</text>
-      </>}
     </svg>
   );
 }
@@ -1078,8 +816,8 @@ function QuoteView({cabs,project,setProject}){
       <div className="fade-up">
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:32}}>
           <div><h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:4}}>Project Quote</h1><p style={{fontSize:14,color:T.muted}}>{new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</p></div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {[["Project name","name"],["Client","client"],["Address","address"],["City","city"],["Province","province"],["Postal code","postal"],["Phone","phone"],["Email","email"]].map(([l,k])=>(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {[["Project name","name"],["Client","client"]].map(([l,k])=>(
               <div key={k} style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:13,color:T.muted,width:90}}>{l}</span><input value={project[k]} onChange={e=>setProject(p=>({...p,[k]:e.target.value}))} style={{...IS,width:220}}/></div>
             ))}
           </div>
@@ -1131,53 +869,17 @@ function OrderSheet({cabs,project,room}){
     <div style={{flex:1,overflowY:"auto",padding:"36px 48px",maxWidth:900}}>
       <div className="fade-up">
         <div style={{textAlign:"center",marginBottom:32}}><h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:4}}>Manufacturer Order Sheet</h1><p style={{fontSize:14,color:T.muted}}>{project.name} — {project.client||"No client"} — {new Date().toLocaleDateString()}</p></div>
-
-        {/* Customer info */}
-        {(project.address||project.phone||project.email)&&(
-          <Card style={{marginBottom:16}}>
-            <Lbl style={{marginBottom:10}}>Customer contact</Lbl>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,fontSize:14}}>
-              {project.address&&<div><span style={{color:T.faint}}>Address:</span> {project.address}{project.city?`, ${project.city}`:""}{project.province?`, ${project.province}`:""} {project.postal}</div>}
-              {project.phone&&<div><span style={{color:T.faint}}>Phone:</span> {project.phone}</div>}
-              {project.email&&<div><span style={{color:T.faint}}>Email:</span> {project.email}</div>}
-            </div>
-          </Card>
-        )}
-
         <Card style={{marginBottom:24}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16}}>
             {[["Project",project.name||"—"],["Client",project.client||"—"],["Room",`${(room.width/12).toFixed(1)}' × ${(room.depth/12).toFixed(1)}'`],["Ceiling",`${room.height}"`]].map(([l,v])=>(
               <div key={l}><Lbl>{l}</Lbl><div style={{fontSize:15,fontWeight:500}}>{v}</div></div>
             ))}
           </div>
-          {/* Room options row */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
-            <div><Lbl>Box material</Lbl><div style={{fontSize:14,fontWeight:500}}>{BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}</div></div>
-            <div><Lbl>To ceiling</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.toCeiling?"Yes":"No"}</div></div>
-            <div><Lbl>Crown moulding</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.crownMoulding?"Yes":"No"}</div></div>
-            <div><Lbl>Bulkhead</Lbl><div style={{fontSize:14,fontWeight:500}}>{room.bulkheadHeight>0?`${room.bulkheadHeight}" drop`:"None"}</div></div>
-          </div>
           {features.length>0&&(
             <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
               <Lbl style={{marginBottom:8}}>Room features</Lbl>
               <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
                 {features.map(f=><div key={f.id} style={{fontSize:13,color:T.muted,background:T.bg,border:`1px solid ${T.border}`,borderRadius:6,padding:"4px 10px"}}>{f.type==="window"?"🪟":"🚪"} {f.type} on {f.wall} wall — {f.width}" wide at {f.x}" from left</div>)}
-              </div>
-            </div>
-          )}
-          {(room.appliances||[]).length>0&&(
-            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
-              <Lbl style={{marginBottom:8}}>Appliances</Lbl>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
-                {(room.appliances||[]).map(a=><div key={a.id} style={{fontSize:13,color:T.muted,background:T.bg,border:`1px solid ${T.border}`,borderRadius:6,padding:"8px 10px"}}><div style={{fontWeight:500,color:T.ink,marginBottom:2}}>{a.label}</div>{a.w}" × {a.h}" × {a.d}" — {a.wall} wall</div>)}
-              </div>
-            </div>
-          )}
-          {(room.utilities||[]).length>0&&(
-            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
-              <Lbl style={{marginBottom:8}}>Plumbing, gas & electrical</Lbl>
-              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                {(room.utilities||[]).map(u=><div key={u.id} style={{fontSize:13,color:T.muted,background:T.bg,border:`1px solid ${T.border}`,borderRadius:6,padding:"4px 10px"}}>{u.icon} {u.label} — {u.wall} wall at {u.x}" from left{u.notes?` (${u.notes})`:""}</div>)}
               </div>
             </div>
           )}
@@ -1365,11 +1067,7 @@ function PresentationView({cabs,room,project,activeWalls}){
             {project.client&&<div style={{fontFamily:"'Lora',serif",fontSize:18,color:T.ink,marginBottom:4}}>
               Prepared for: <strong>{project.client}</strong>
             </div>}
-            {project.address&&<div style={{fontSize:13,color:T.muted}}>{project.address}</div>}
-            {(project.city||project.province)&&<div style={{fontSize:13,color:T.muted}}>{[project.city,project.province,project.postal].filter(Boolean).join(", ")}</div>}
-            {project.phone&&<div style={{fontSize:13,color:T.muted}}>{project.phone}</div>}
-            {project.email&&<div style={{fontSize:13,color:T.muted}}>{project.email}</div>}
-            <div style={{fontSize:14,color:T.muted,marginTop:4}}>{project.name}</div>
+            <div style={{fontSize:14,color:T.muted}}>{project.name}</div>
             <div style={{fontSize:13,color:T.faint,marginTop:4}}>
               {(room.width/12).toFixed(1)}' × {(room.depth/12).toFixed(1)}' · {room.height}" ceiling
             </div>
@@ -1392,38 +1090,6 @@ function PresentationView({cabs,room,project,activeWalls}){
             </div>
           ))}
         </div>
-
-        {/* Room options summary */}
-        {(room.toCeiling||room.crownMoulding||room.bulkheadHeight>0||(room.appliances||[]).length>0||(room.utilities||[]).length>0)&&(
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:40}}>
-            {/* Appliances */}
-            {(room.appliances||[]).length>0&&(
-              <div style={{padding:"16px 20px",border:`1px solid ${T.border}`,borderRadius:8}}>
-                <div style={{fontSize:11,fontWeight:600,color:T.muted,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Appliances</div>
-                {(room.appliances||[]).map(a=>(
-                  <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${T.surface}`,fontSize:13}}>
-                    <span style={{color:T.ink,fontWeight:500}}>{a.label}</span>
-                    <span style={{color:T.muted}}>{a.w}" × {a.h}" × {a.d}" — {a.wall} wall</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {/* Room options */}
-            <div style={{padding:"16px 20px",border:`1px solid ${T.border}`,borderRadius:8}}>
-              <div style={{fontSize:11,fontWeight:600,color:T.muted,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Specifications</div>
-              <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:13}}>
-                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Box material</span><span style={{color:T.ink}}>{BOX_MATS[room.boxMaterial]?.label||"Birch Plywood"}</span></div>
-                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Cabinets to ceiling</span><span style={{color:T.ink}}>{room.toCeiling?"Yes":"No"}</span></div>
-                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Crown moulding</span><span style={{color:T.ink}}>{room.crownMoulding?"Yes":"No"}</span></div>
-                {room.bulkheadHeight>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.muted}}>Bulkhead drop</span><span style={{color:T.ink}}>{room.bulkheadHeight}"</span></div>}
-                {(room.utilities||[]).length>0&&<div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${T.surface}`}}>
-                  <div style={{fontSize:11,fontWeight:600,color:T.muted,marginBottom:4}}>UTILITY LOCATIONS</div>
-                  {(room.utilities||[]).map(u=><div key={u.id} style={{color:T.muted,marginBottom:3}}>{u.icon} {u.label} — {u.wall} wall at {u.x}" from left{u.notes?` (${u.notes})`:""}</div>)}
-                </div>}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Wall elevations */}
         <div style={{marginBottom:40}}>
@@ -1548,8 +1214,8 @@ function PresentationView({cabs,room,project,activeWalls}){
 export default function App(){
   const [view,setView]=useState("setup");
   const [subView,setSubView]=useState("elevation");
-  const [project,setProject]=useState({name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:""});
-  const [room,setRoom]=useState({width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply"});
+  const [project,setProject]=useState({name:"New Kitchen Project",client:""});
+  const [room,setRoom]=useState({width:144,depth:120,height:96,features:[]});
   const [activeWalls,setActiveWalls]=useState(["South","West"]);
   const [cabs,setCabs]=useState([]);
   const [sel,setSel]=useState(null);
@@ -1632,7 +1298,7 @@ export default function App(){
             <div style={{flex:1,overflow:"auto",padding:28}}>
               <div style={{transform:`scale(${zoom})`,transformOrigin:"top left",display:"inline-block"}}>
                 {subView==="elevation"
-                  ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]} utilities={room.utilities||[]}/>
+                  ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]}/>
                   :<FloorPlanCanvas cabs={cabs} room={room} sel={sel} onSel={setSel} onMoveIsland={moveIsland}/>
                 }
               </div>
