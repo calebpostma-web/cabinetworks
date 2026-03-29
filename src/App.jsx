@@ -1460,14 +1460,48 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
               const drawerGap=3;
 
               // Render a single door panel
-              const door=(dx,dy,dw,dh,handleSide)=>(
-                <g key={`d${dx}${dy}`}>
-                  <rect x={dx} y={dy} width={dw} height={dh} fill={df} stroke={de} strokeWidth={0.8} rx={1}/>
-                  {c.doorStyle==="Shaker"&&<rect x={dx+5} y={dy+5} width={dw-10} height={dh-10} fill="none" stroke={si} strokeWidth={1} rx={1}/>}
-                  {c.doorStyle==="Raised Panel"&&<rect x={dx+4} y={dy+4} width={dw-8} height={dh-8} fill="#D8B88E" stroke={de} strokeWidth={0.8} rx={2}/>}
-                  <rect x={handleSide==="left"?dx+4:dx+dw-10} y={dy+dh/2-7} width={6} height={14} fill={hn} rx={3}/>
-                </g>
-              );
+              const door=(dx,dy,dw,dh,handleSide)=>{
+                if(c.doorStyle==="Open Shelf"){
+                  // No door — just horizontal shelf lines
+                  const nShelves=Math.max(2,Math.floor(dh/35));
+                  const shelfGap=dh/(nShelves+1);
+                  return(
+                    <g key={`d${dx}${dy}`}>
+                      <rect x={dx} y={dy} width={dw} height={dh} fill="none" stroke={de} strokeWidth={0.8} rx={1} strokeDasharray="4,2"/>
+                      {Array.from({length:nShelves}).map((_,i)=>(
+                        <line key={i} x1={dx+3} y1={dy+shelfGap*(i+1)} x2={dx+dw-3} y2={dy+shelfGap*(i+1)} stroke={de} strokeWidth={1}/>
+                      ))}
+                    </g>
+                  );
+                }
+                if(c.doorStyle==="Glass Insert"){
+                  // Glass panel — light blue tinted with mullion cross
+                  return(
+                    <g key={`d${dx}${dy}`}>
+                      <rect x={dx} y={dy} width={dw} height={dh} fill={df} stroke={de} strokeWidth={0.8} rx={1}/>
+                      <rect x={dx+5} y={dy+5} width={dw-10} height={dh-10} fill="#D8EAF4" fillOpacity={0.5} stroke={si} strokeWidth={1} rx={1}/>
+                      <line x1={dx+dw/2} y1={dy+5} x2={dx+dw/2} y2={dy+dh-5} stroke={si} strokeWidth={0.7}/>
+                      <line x1={dx+5} y1={dy+dh/2} x2={dx+dw-5} y2={dy+dh/2} stroke={si} strokeWidth={0.7}/>
+                      <rect x={handleSide==="left"?dx+4:dx+dw-10} y={dy+dh/2-7} width={6} height={14} fill={hn} rx={3}/>
+                    </g>
+                  );
+                }
+                return(
+                  <g key={`d${dx}${dy}`}>
+                    <rect x={dx} y={dy} width={dw} height={dh} fill={df} stroke={de} strokeWidth={0.8} rx={1}/>
+                    {c.doorStyle==="Shaker"&&<rect x={dx+5} y={dy+5} width={dw-10} height={dh-10} fill="none" stroke={si} strokeWidth={1} rx={1}/>}
+                    {c.doorStyle==="Raised Panel"&&<rect x={dx+4} y={dy+4} width={dw-8} height={dh-8} fill="#D8B88E" stroke={de} strokeWidth={0.8} rx={2}/>}
+                    {c.doorStyle==="Beadboard"&&(()=>{
+                      const nBeads=Math.max(3,Math.floor(dw/12));
+                      const bGap=dw/(nBeads+1);
+                      return Array.from({length:nBeads}).map((_,i)=>(
+                        <line key={i} x1={dx+bGap*(i+1)} y1={dy+4} x2={dx+bGap*(i+1)} y2={dy+dh-4} stroke={si} strokeWidth={0.6}/>
+                      ));
+                    })()}
+                    <rect x={handleSide==="left"?dx+4:dx+dw-10} y={dy+dh/2-7} width={6} height={14} fill={hn} rx={3}/>
+                  </g>
+                );
+              };
               // Render a drawer
               const drawer=(dx,dy,dw,dh)=>(
                 <g key={`dr${dx}${dy}`}>
@@ -2556,6 +2590,27 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
               {isFridge&&<line x1={cx+cw*0.75} y1={cyy+bodyH*0.2} x2={cx+cw*0.75} y2={cyy+bodyH*0.8} stroke="#A09080" strokeWidth={2} strokeLinecap="round"/>}
               {!isSink&&!isRange&&!isFridge&&Array.from({length:nD}).map((_,i)=>{
                 const ddx=cx+i*dw;
+                if(c.doorStyle==="Open Shelf"){
+                  const nSh=Math.max(2,Math.floor(bodyH/35));
+                  const sg=bodyH/(nSh+1);
+                  return(
+                    <g key={i}>
+                      <rect x={ddx+2} y={cyy+2} width={dw-4} height={bodyH-4} fill="none" stroke={de} strokeWidth={0.6} rx={1} strokeDasharray="3,2"/>
+                      {Array.from({length:nSh}).map((_,j)=>(
+                        <line key={j} x1={ddx+4} y1={cyy+sg*(j+1)} x2={ddx+dw-4} y2={cyy+sg*(j+1)} stroke={de} strokeWidth={0.7}/>
+                      ))}
+                    </g>
+                  );
+                }
+                if(c.doorStyle==="Glass Insert"){
+                  return(
+                    <g key={i}>
+                      <rect x={ddx+2} y={cyy+2} width={dw-4} height={bodyH-4} fill={df} stroke={de} strokeWidth={0.6} rx={1}/>
+                      <rect x={ddx+5} y={cyy+5} width={dw-10} height={bodyH-10} fill="#D8EAF4" fillOpacity={0.5} stroke={si} strokeWidth={0.7} rx={1}/>
+                      <rect x={ddx+(i===0?dw-8:4)} y={cyy+bodyH/2-5} width={4} height={10} fill={hn} rx={2}/>
+                    </g>
+                  );
+                }
                 return(
                   <g key={i}>
                     <rect x={ddx+2} y={cyy+2} width={dw-4} height={bodyH-4} fill={df} stroke={de} strokeWidth={0.6} rx={1}/>
@@ -2967,6 +3022,38 @@ export default function App(){
     setCabs(prev=>{
       const topack=prev.filter(c=>c.wall===targetWall&&DEFS[c.type]?.row===row).sort((a,b)=>a.x-b.x);
       const rest=prev.filter(c=>!(c.wall===targetWall&&DEFS[c.type]?.row===row));
+
+      // When packing uppers, tall cabs are barriers — pack into groups between them
+      if(row==="upper"){
+        const tallCabs=prev.filter(c=>c.wall===targetWall&&(c.type==="tall"||c.type==="corner_pantry")).sort((a,b)=>a.x-b.x);
+        if(tallCabs.length>0){
+          // Build barrier zones from tall cabs
+          const barriers=tallCabs.map(t=>({x:t.x,end:t.x+t.w}));
+          // Pack uppers into groups: before first barrier, between barriers, after last
+          const packed=[];
+          for(const uc of topack){
+            // Find which gap this upper belongs in (by its current center)
+            const center=uc.x+uc.w/2;
+            let gapStart=0, gapEnd=wallWidth(targetWall,room);
+            for(const b of barriers){
+              if(center<b.x){gapEnd=b.x;break;}
+              gapStart=b.end;
+              gapEnd=wallWidth(targetWall,room);
+            }
+            // Find the rightmost edge of already-packed cabs in this same gap
+            let cursor=gapStart;
+            for(const p of packed){
+              if(p.x>=gapStart&&p.x+p.w<=gapEnd+1){
+                cursor=Math.max(cursor,p.x+p.w);
+              }
+            }
+            packed.push({...uc,x:Math.min(cursor,gapEnd-uc.w)});
+          }
+          return [...rest,...packed];
+        }
+      }
+
+      // Default: pack flush from left (lowers, or uppers with no tall cabs)
       let cursor=0;
       const packed=topack.map(c=>{const nc={...c,x:cursor};cursor+=c.w;return nc;});
       return [...rest,...packed];
