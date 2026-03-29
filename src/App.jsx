@@ -1402,8 +1402,8 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
         );
       })}
 
-      {/* Countertops */}
-      {wallCabs.filter(c=>DEFS[c.type]?.row==="lower").map(c=>(
+      {/* Countertops — only base/vanity/island, not tall or corner pantry */}
+      {wallCabs.filter(c=>DEFS[c.type]?.row==="lower"&&c.type!=="tall"&&c.type!=="corner_pantry").map(c=>(
         <rect key={`ct${c.id}`} x={PL+c.x*ES-1} y={FY-c.h*ES-2.5*ES} width={c.w*ES+2} height={2.5*ES} fill={ct} rx={1}/>
       ))}
 
@@ -1419,7 +1419,7 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
             <rect x={cx} y={cyy} width={cw} height={bodyH}
               fill={isFridge?"#D4C8B8":isRange?"#C8A888":bf}
               stroke={isOverlap?"#CC4422":isSel?T.amber:de} strokeWidth={isSel||isOverlap?2:1} rx={1}/>
-            {isLower&&<rect x={cx+3} y={cyy+bodyH} width={cw-6} height={tkH} fill={tf} rx={1}/>}
+            {isLower&&<rect x={cx} y={cyy+bodyH} width={cw} height={tkH} fill={tf} rx={0}/>}
 
             {/* Sink visual */}
             {isSink&&(
@@ -2160,11 +2160,13 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
           );
         })}
 
-        {/* Countertop line */}
-        {lowerCabs.length>0&&(()=>{
-          const minX=Math.min(...lowerCabs.map(c=>c.x));
-          const maxX=Math.max(...lowerCabs.map(c=>c.x+c.w));
-          return <rect x={PL+minX*S-2} y={FY-lowerCabs[0].h*S-2*S} width={(maxX-minX)*S+4} height={2*S} fill="#8B6340" rx={1}/>;
+        {/* Countertop line — only base/vanity, not tall or corner pantry */}
+        {(()=>{
+          const ctCabs=lowerCabs.filter(c=>c.type!=="tall"&&c.type!=="corner_pantry");
+          if(!ctCabs.length) return null;
+          const minX=Math.min(...ctCabs.map(c=>c.x));
+          const maxX=Math.max(...ctCabs.map(c=>c.x+c.w));
+          return <rect x={PL+minX*S-2} y={FY-ctCabs[0].h*S-2*S} width={(maxX-minX)*S+4} height={2*S} fill="#8B6340" rx={1}/>;
         })()}
 
         {/* Cabinet boxes */}
@@ -2181,7 +2183,7 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
               {/* Box */}
               <rect x={cx} y={cy} width={cw} height={bodyH} fill="#F4EFE7" stroke="#555" strokeWidth={1} rx={1}/>
               {/* Toekick */}
-              {isLower&&<rect x={cx+3} y={cy+bodyH} width={cw-6} height={tkH} fill="#3A2A14" stroke="#555" strokeWidth={0.6} rx={1}/>}
+              {isLower&&<rect x={cx} y={cy+bodyH} width={cw} height={tkH} fill="#3A2A14" stroke="#555" strokeWidth={0.6} rx={0}/>}
               {/* Door lines */}
               {!isSink&&!isRange&&fl==="doors"&&nDoors===2&&<line x1={cx+cw/2} y1={cy+2} x2={cx+cw/2} y2={cy+bodyH-2} stroke="#888" strokeWidth={0.6}/>}
               {/* Drawer lines for drawer layouts */}
@@ -2571,8 +2573,8 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
             </g>
           );
         })}
-        {/* Countertops */}
-        {wallCabs.filter(c=>DEFS[c.type]?.row==="lower").map(c=>(
+        {/* Countertops — only base/vanity/island, not tall or corner pantry */}
+        {wallCabs.filter(c=>DEFS[c.type]?.row==="lower"&&c.type!=="tall"&&c.type!=="corner_pantry").map(c=>(
           <rect key={`ct${c.id}`} x={PL+c.x*ES2-1} y={FY-c.h*ES2-2.2*ES2} width={c.w*ES2+2} height={2.2*ES2} fill={ct} rx={1}/>
         ))}
         {/* Cabinets */}
@@ -2584,7 +2586,7 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
           return(
             <g key={c.id}>
               <rect x={cx} y={cyy} width={cw} height={bodyH} fill={isFridge?"#D4C8B8":isRange?"#C8A888":bf} stroke={de} strokeWidth={0.8} rx={1}/>
-              {isLower&&<rect x={cx+2} y={cyy+bodyH} width={cw-4} height={tkH} fill={tf} rx={1}/>}
+              {isLower&&<rect x={cx} y={cyy+bodyH} width={cw} height={tkH} fill={tf} rx={0}/>}
               {isSink&&<rect x={cx+cw*0.15} y={cyy+bodyH*0.25} width={cw*0.7} height={bodyH*0.5} fill="#8AAABB" stroke="#6A8898" strokeWidth={0.8} rx={2}/>}
               {isRange&&(()=>{const br=4,gap=Math.min(cw*0.22,12);return [[-1,-1],[1,-1],[-1,1],[1,1]].map(([ox,oy],i)=><g key={i}><circle cx={cx+cw/2+ox*gap} cy={cyy+bodyH/2+oy*gap} r={br} fill="none" stroke="#8A7060" strokeWidth={1}/></g>);})()}
               {isFridge&&<line x1={cx+cw*0.75} y1={cyy+bodyH*0.2} x2={cx+cw*0.75} y2={cyy+bodyH*0.8} stroke="#A09080" strokeWidth={2} strokeLinecap="round"/>}
