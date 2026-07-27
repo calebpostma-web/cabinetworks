@@ -14,53 +14,23 @@ const T = {
 /* ─── CONSTANTS ───────────────────────────────────────────────────────────── */
 const MODEL="claude-sonnet-4-20250514", ES=4.5, TOEKICK=4.5, UPPER_BTM=54;
 const ALL_WALLS=["South","North","East","West"];
-const ROOM_TYPES=[{key:"kitchen",label:"Kitchen",icon:"\ud83c\udf73"},{key:"bath",label:"Bathroom",icon:"\ud83d\udec1"}];
-const isBath=room=>(room?.roomType||"kitchen")==="bath";
-const roomWord=room=>isBath(room)?"bathroom":"kitchen";
-const STD_W={base:[9,12,15,18,21,24,27,30,33,36,42,48],upper:[9,12,15,18,21,24,27,30,33,36,42,48],tall:[18,24,30,36],island:[36,42,48,54,60,72,84,96],vanity:[18,21,24,27,30,33,36,42,48],corner_base:[33,36,39,42],blind_base:[36,39,42,45,48],corner_upper:[24,27,30],blind_upper:[27,30,33,36],corner_pantry:[24,30,36],
-  vanity_sink:[24,30,36,42,48,60,72],vanity_drawer:[12,15,18,21,24],linen:[12,15,18,21,24],
-  medicine:[18,24,30,36],otc:[24,27,30],
-  toilet:[18,20,22],bathsink:[18,20,24,30],bathtub:[54,60,66,72],shower:[32,36,42,48,60],tubshower:[54,60,66,72]};
-const STD_H={base:[30,31.5,34.5,36],upper:[12,15,18,24,30,36,42],tall:[72,84,90,96],island:[28.5,34.5,36,42],vanity:[28.5,30,31.5,32,34.5],corner_base:[34.5],blind_base:[34.5],corner_upper:[12,15,18,24,30,36,42],blind_upper:[12,15,18,24,30,36,42],corner_pantry:[72,78,84,90,96],
-  vanity_sink:[30,31.5,32,34.5,36],vanity_drawer:[30,31.5,32,34.5,36],linen:[72,78,84,90],
-  medicine:[24,30,36],otc:[24,30,36],
-  toilet:[28,30,31],bathsink:[32,34,36],bathtub:[18,20,22],shower:[72,76,80,84],tubshower:[72,76,80,84]};
-const STD_D={base:[12,15,18,21,24],upper:[12,13,14],tall:[12,18,24],island:[24,27,30,36],vanity:[18,21,24],corner_base:[33,36,39,42],blind_base:[24],corner_upper:[24],blind_upper:[12],corner_pantry:[24,30,36],
-  vanity_sink:[18,21,24],vanity_drawer:[18,21,24],linen:[12,16,18,21,24],
-  medicine:[4,5,6,8],otc:[8,10,12],
-  toilet:[27,29,31],bathsink:[18,20,22],bathtub:[30,32,36],shower:[32,36,42,48],tubshower:[30,32,36]};
+const STD_W={base:[9,12,15,18,21,24,27,30,33,36,42,48],upper:[9,12,15,18,21,24,27,30,33,36,42,48],tall:[18,24,30,36],island:[36,42,48,54,60,72,84,96],vanity:[18,21,24,27,30,33,36,42,48],corner_base:[33,36,39,42],blind_base:[36,39,42,45,48],corner_upper:[24,27,30],blind_upper:[27,30,33,36],corner_pantry:[24,30,36]};
+const STD_H={base:[30,31.5,34.5,36],upper:[12,15,18,24,30,36,42],tall:[72,84,90,96],island:[28.5,34.5,36,42],vanity:[28.5,30,31.5,32,34.5],corner_base:[34.5],blind_base:[34.5],corner_upper:[12,15,18,24,30,36,42],blind_upper:[12,15,18,24,30,36,42],corner_pantry:[72,78,84,90,96]};
+const STD_D={base:[12,15,18,21,24],upper:[12,13,14],tall:[12,18,24],island:[24,27,30,36],vanity:[18,21,24],corner_base:[33,36,39,42],blind_base:[24],corner_upper:[24],blind_upper:[12],corner_pantry:[24,30,36]};
 const DEFS={
-  base:{label:"Base Cabinet",w:36,h:34.5,d:24,row:"lower",mode:"kitchen"},
-  upper:{label:"Wall Cabinet",w:36,h:30,d:12,row:"upper",mode:"both"},
-  tall:{label:"Tall / Pantry",w:24,h:84,d:24,row:"lower",mode:"kitchen"},
-  island:{label:"Island",w:48,h:34.5,d:36,row:"island",mode:"kitchen"},
-  vanity:{label:"Vanity",w:36,h:32,d:21,row:"lower",mode:"bath"},
-  corner_base:{label:"Corner Base (LS)",w:36,h:34.5,d:36,row:"lower",isCorner:true,mode:"kitchen"},
-  blind_base:{label:"Blind Corner Base",w:42,h:34.5,d:24,row:"lower",isCorner:true,mode:"kitchen"},
-  corner_upper:{label:"Corner Upper",w:24,h:30,d:24,row:"upper",isCorner:true,mode:"kitchen"},
-  blind_upper:{label:"Blind Corner Upper",w:30,h:30,d:12,row:"upper",isCorner:true,mode:"kitchen"},
-  corner_pantry:{label:"Corner Pantry",w:36,h:84,d:36,row:"lower",isCorner:true,mode:"kitchen"},
-  /* ── BATHROOM CABINETRY ── */
-  vanity_sink:{label:"Vanity \u2014 Sink Base",w:30,h:32,d:21,row:"lower",mode:"bath"},
-  vanity_drawer:{label:"Vanity Drawer Bank",w:18,h:32,d:21,row:"lower",mode:"bath"},
-  linen:{label:"Linen Tower",w:18,h:84,d:21,row:"lower",mode:"bath"},
-  medicine:{label:"Medicine Cabinet",w:24,h:30,d:6,row:"upper",mode:"bath"},
-  otc:{label:"Over-Toilet Cabinet",w:24,h:30,d:10,row:"upper",mode:"bath"},
-  /* ── BATHROOM FIXTURES (not cabinetry \u2014 priced from FIXTURE_P) ── */
-  toilet:{label:"Toilet",w:20,h:31,d:29,row:"fixture",fixture:true,mode:"bath"},
-  bathsink:{label:"Bathroom Sink",w:24,h:34,d:20,row:"fixture",fixture:true,mode:"bath"},
-  bathtub:{label:"Bathtub",w:60,h:20,d:32,row:"fixture",fixture:true,mode:"bath"},
-  shower:{label:"Shower",w:36,h:80,d:36,row:"fixture",fixture:true,mode:"bath"},
-  tubshower:{label:"Tub / Shower Combo",w:60,h:80,d:32,row:"fixture",fixture:true,mode:"bath"},
+  base:{label:"Base Cabinet",w:36,h:34.5,d:24,row:"lower"},
+  upper:{label:"Wall Cabinet",w:36,h:30,d:12,row:"upper"},
+  tall:{label:"Tall / Pantry",w:24,h:84,d:24,row:"lower"},
+  island:{label:"Island",w:48,h:34.5,d:36,row:"island"},
+  vanity:{label:"Vanity",w:36,h:32,d:21,row:"lower"},
+  corner_base:{label:"Corner Base (LS)",w:36,h:34.5,d:36,row:"lower",isCorner:true},
+  blind_base:{label:"Blind Corner Base",w:42,h:34.5,d:24,row:"lower",isCorner:true},
+  corner_upper:{label:"Corner Upper",w:24,h:30,d:24,row:"upper",isCorner:true},
+  blind_upper:{label:"Blind Corner Upper",w:30,h:30,d:12,row:"upper",isCorner:true},
+  corner_pantry:{label:"Corner Pantry",w:36,h:84,d:36,row:"lower",isCorner:true},
 };
-// Which DEFS types belong to which room type
-const typesFor=mode=>Object.entries(DEFS).filter(([,d])=>d.mode===mode||d.mode==="both");
 const MATS={thermofoil:{label:"Thermofoil",rate:16},painted_mdf:{label:"Painted MDF",rate:22},maple:{label:"Maple",rate:40},cherry:{label:"Cherry",rate:56},walnut:{label:"Walnut",rate:70}};
-const BASE_P={base:175,upper:140,tall:310,island:395,vanity:190,corner_base:280,blind_base:240,corner_upper:200,blind_upper:170,corner_pantry:420,
-  vanity_sink:230,vanity_drawer:185,linen:340,medicine:150,otc:170};
-// Bathroom fixtures are supplied items \u2014 flat allowance, not material-per-sqft.
-// Override per unit on the Quote or Properties panel to drop in the real supplier number.
-const FIXTURE_P={toilet:425,bathsink:350,bathtub:850,shower:1650,tubshower:1250};
+const BASE_P={base:175,upper:140,tall:310,island:395,vanity:190,corner_base:280,blind_base:240,corner_upper:200,blind_upper:170,corner_pantry:420};
 const DOOR_STYLES=["Shaker","Flat Panel","Raised Panel","Beadboard","Glass Insert","Open Shelf"];
 const FRONT_LAYOUTS=[
   {key:"doors",label:"Doors only",desc:"Standard door panels"},
@@ -137,23 +107,7 @@ const SLIDE_TYPES=[
   {key:"blum_tandem",label:"Blum Tandem Soft-Close",price:28},{key:"generic_soft",label:"Soft-Close Undermount",price:16},
   {key:"side_mount",label:"Side-Mount Ball Bearing",price:8},{key:"tbd",label:"TBD",price:0},
 ];
-const DEFAULT_HARDWARE={pulls:"bar",hinges:"blum_soft",slides:"blum_tandem",pullPrice:8,hingePrice:6,slidePrice:28,finish:"brushed_nickel"};
-// Metal finishes — shared by cabinet pulls and plumbing trim so the two can be matched.
-// `metal` tints the faucets, shower heads, handles and flush levers in the elevation views.
-const METAL_FINISHES=[
-  {key:"chrome",label:"Polished Chrome",metal:"#B9C2C9",dark:"#7C868E"},
-  {key:"brushed_nickel",label:"Brushed Nickel",metal:"#AEA9A0",dark:"#7A756C"},
-  {key:"matte_black",label:"Matte Black",metal:"#3B3B3D",dark:"#1E1E20"},
-  {key:"brushed_gold",label:"Brushed Gold",metal:"#C6A34A",dark:"#8C7122"},
-  {key:"polished_brass",label:"Polished Brass",metal:"#D4AF37",dark:"#96791A"},
-  {key:"champagne_bronze",label:"Champagne Bronze",metal:"#C3A184",dark:"#8A7059"},
-  {key:"oil_rubbed_bronze",label:"Oil-Rubbed Bronze",metal:"#4B3829",dark:"#2B2018"},
-  {key:"matte_white",label:"Matte White",metal:"#EFECE6",dark:"#B6B0A5"},
-  {key:"stainless",label:"Stainless Steel",metal:"#A8ADB2",dark:"#71767B"},
-  {key:"tbd",label:"TBD",metal:"#9A8878",dark:"#6E6155"},
-];
-const finishDef=k=>METAL_FINISHES.find(f=>f.key===k)||METAL_FINISHES[0];
-const finishLabel=k=>finishDef(k).label;
+const DEFAULT_HARDWARE={pulls:"bar",hinges:"blum_soft",slides:"blum_tandem",pullPrice:8,hingePrice:6,slidePrice:28};
 const CT_MATERIALS=[
   {key:"quartz",label:"Quartz",pf:55},{key:"granite",label:"Granite",pf:65},{key:"marble",label:"Marble",pf:80},
   {key:"laminate",label:"Laminate",pf:18},{key:"butcher",label:"Butcher Block",pf:45},{key:"concrete",label:"Concrete",pf:70},
@@ -168,7 +122,7 @@ const DEFAULT_COUNTERTOP={material:"quartz",edge:"eased",overhang:1.5,backsplash
 function calcCountertopSqFt(cabs,room){
   // Sum width of all base/vanity cabs (not tall, not upper, not corner pantry) + island
   let totalInches=0;
-  const lowers=cabs.filter(hasCounter);
+  const lowers=cabs.filter(c=>DEFS[c.type]?.row==="lower"&&c.type!=="tall"&&c.type!=="corner_pantry");
   for(const c of lowers) totalInches+=c.w;
   const islands=cabs.filter(c=>c.wall==="Island");
   for(const c of islands) totalInches+=c.w; // island gets counted by width (depth adds separately)
@@ -206,11 +160,10 @@ function calcInstallSummary(cabs,room,activeWalls){
   const inst=room.install||{};
 
   // Cabinet counts by type
-  const lowers=cabs.filter(c=>DEFS[c.type]?.row==="lower"&&!c.corner&&!isTallCab(c)&&c.wall!=="Island").length;
+  const lowers=cabs.filter(c=>DEFS[c.type]?.row==="lower"&&!c.corner&&c.type!=="tall"&&c.type!=="corner_pantry"&&c.wall!=="Island").length;
   const uppers=cabs.filter(c=>DEFS[c.type]?.row==="upper"&&!c.corner).length;
   const corners=cabs.filter(c=>c.corner).length;
-  const tall=cabs.filter(isTallCab).length;
-  const fixtures=cabs.filter(c=>DEFS[c.type]?.fixture).length;
+  const tall=cabs.filter(c=>c.type==="tall"||c.type==="corner_pantry").length;
   const sinkCount=cabs.filter(c=>c.notes?.toLowerCase().includes("sink")).length;
   const islands=cabs.filter(c=>c.wall==="Island").length>0?1:0;
 
@@ -265,7 +218,7 @@ function calcInstallSummary(cabs,room,activeWalls){
   const soffitPanels=room.bulkheadHeight>0?(inst.soffitPanels??1):0;
 
   return{
-    lowers,uppers,corners,tall,fixtures,sink:sinkCount,islands,
+    lowers,uppers,corners,tall,sink:sinkCount,islands,
     crownLF,crownCuts,toekickRuns,hardwareHoles,
     pullouts,scribeRuns,
     floatingShelves,lightingChannelLF,ucLightingRuns,soffitPanels,
@@ -278,7 +231,6 @@ function calcInstallSummary(cabs,room,activeWalls){
 function calcHardwareQty(cabs){
   let doors=0,drawers=0,hinges=0;
   for(const c of cabs){
-    if(DEFS[c.type]?.fixture) continue; // fixtures have no doors/drawers/slides
     const fl=c.frontLayout||"doors";
     const w=c.w||36;
     const nDoors=w>=27?2:1;
@@ -311,8 +263,8 @@ function calcTrim(cabs,room,activeWalls){
   let crownLF=0,lightRailLF=0,toeKickLF=0,scribeLF=0;
   for(const w of activeWalls){
     const wCabs=cabs.filter(c=>c.wall===w);
-    const uppers=wCabs.filter(c=>DEFS[c.type]?.row==="upper"&&c.type!=="medicine");
-    const talls=wCabs.filter(isTallCab);
+    const uppers=wCabs.filter(c=>DEFS[c.type]?.row==="upper");
+    const talls=wCabs.filter(c=>c.type==="tall"||c.type==="corner_pantry");
     const lowers=wCabs.filter(c=>DEFS[c.type]?.row==="lower");
     crownLF+=uppers.reduce((s,c)=>s+c.w,0)+talls.reduce((s,c)=>s+c.w,0);
     lightRailLF+=uppers.reduce((s,c)=>s+c.w,0);
@@ -361,14 +313,6 @@ const APPLIANCE_TYPES=[
   {key:"rangeHood",label:"Range Hood",defW:30,defH:6,defD:20},
   {key:"sink",label:"Sink",defW:33,defH:10,defD:22},
 ];
-const BATH_FIXTURE_TYPES=[
-  {key:"toilet",label:"Toilet",defW:20,defH:31,defD:29},
-  {key:"vanity",label:"Vanity",defW:36,defH:32,defD:21},
-  {key:"bathsink",label:"Bathroom Sink",defW:24,defH:34,defD:20},
-  {key:"bathtub",label:"Bathtub",defW:60,defH:20,defD:32},
-  {key:"shower",label:"Shower",defW:36,defH:80,defD:36},
-  {key:"tubshower",label:"Tub / Shower",defW:60,defH:80,defD:32},
-];
 const UTILITY_TYPES=[
   {key:"water",label:"Water supply",icon:"💧"},
   {key:"drain",label:"Drain",icon:"⬇"},
@@ -385,7 +329,6 @@ const aid=()=>`a${_uid++}`;
 const utid=()=>`u${_uid++}`;
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const getEstPrice=c=>{
-  if(DEFS[c.type]?.fixture) return FIXTURE_P[c.type]||0;
   const base=Math.round((BASE_P[c.type]||175)+(c.w*c.h/144)*(MATS[c.material]?.rate??40));
   const acc=c.cornerAccessory?CORNER_ACCESSORIES.find(a=>a.key===c.cornerAccessory)?.price||0:0;
   return base+acc;
@@ -421,17 +364,6 @@ const cabCode=(c)=>{
   if(c.type==="corner_upper") return"UCD";
   if(c.type==="blind_upper") return"UBC";
   if(c.type==="corner_pantry") return"TCP";
-  // Bathroom fixtures + cabinetry
-  if(c.type==="toilet") return"TLT";
-  if(c.type==="bathsink") return"LAV";
-  if(c.type==="bathtub") return"TUB";
-  if(c.type==="shower") return"SHR";
-  if(c.type==="tubshower") return"TSC";
-  if(c.type==="linen") return"LIN";
-  if(c.type==="medicine") return"MED";
-  if(c.type==="otc") return"UOTC";
-  if(c.type==="vanity_sink") return"VSNK";
-  if(c.type==="vanity_drawer") return"VDWR";
   // Special notes
   const nl=c.notes?.toLowerCase()||"";
   if(nl.includes("sink")) return prefix+"SNK";
@@ -454,11 +386,6 @@ const cabCode=(c)=>{
 
 // Filler strip codes
 const fillerCode=(w)=>w<=1?"SL":"BSP";
-
-// Floor cabinets that carry a countertop (excludes tall/pantry/linen towers and fixtures)
-const hasCounter=c=>DEFS[c.type]?.row==="lower"&&!["tall","corner_pantry","linen"].includes(c.type);
-// Full-height cabinetry
-const isTallCab=c=>["tall","corner_pantry","linen"].includes(c.type);
 
 const wallWidth=(wall,room)=>{
   if(room.wallLengths?.[wall]) return room.wallLengths[wall];
@@ -527,17 +454,6 @@ const LE={
       const s=placed.find(p=>p.role==="sink");
       return s?s.x-anchorW:Math.round(wallW/2-anchorW);
     }
-    if(hint==="next-to-vanity"){
-      const v=placed.find(p=>p.role==="vanity");
-      return v?clamp(v.x+v.w+3,0,wallW-anchorW):Math.round(wallW/2-anchorW/2);
-    }
-    if(hint==="corner-left") return 0;
-    if(hint==="corner-right") return wallW-anchorW;
-    if(hint==="opposite-door"){
-      const dr=(features||[]).find(f=>f.wall===wall&&f.type==="door");
-      if(dr) return dr.x<wallW/2?wallW-anchorW:0;
-      return Math.round(wallW/2-anchorW/2);
-    }
     if(hint==="at-water"){
       const u=LE.utilityAt(wall,"water",utilities);
       if(u) return clamp(Math.round(u.x-anchorW/2),0,wallW-anchorW);
@@ -549,15 +465,6 @@ const LE={
       return Math.round(wallW/2-anchorW/2);
     }
     return Math.round(wallW/2-anchorW/2);
-  },
-
-  // NKBA: 15" minimum from the toilet centreline to any sidewall. Pull the bowl
-  // off the corner if the wall is long enough to allow it.
-  toiletInset(x,w,wallW){
-    const lo=Math.max(0,15-w/2);
-    const hi=Math.min(wallW-w,wallW-15-w/2);
-    if(hi<lo) return clamp(x,0,Math.max(0,wallW-w)); // wall too short — leave it
-    return clamp(x,lo,hi);
   },
 
   // Find free segments in [0, wallW] given occupied zones
@@ -910,128 +817,6 @@ const LE={
     const tri=LE.workTriangle(allPlaced,activeWalls,room);
 
     return{cabinets:allCabs,workTriangle:tri,placed:allPlaced};
-  },
-
-  /* ── BATHROOM LAYOUT ────────────────────────────────────────────────────
-     Bathrooms are not filled wall-to-wall like kitchens. We place the fixtures
-     the AI assigned, hold NKBA clearances around the toilet, then add only the
-     storage that actually fits. */
-  buildBathWall(wallName,wallW,plan,room,style,upperH){
-    const features=room.features||[];
-    const utilities=room.utilities||[];
-    const fx=room.appliances||[]; // bathroom fixture dims live in room.appliances
-    const doorObs=LE.lowerObstacles(wallName,features);
-    const assignments=plan.assignments||{};
-    const dim=(key,dw,dh,dd)=>{
-      const a=fx.find(x=>x.type===key);
-      return{w:a&&a.w?a.w:dw,h:a&&a.h?a.h:dh,d:a&&a.d?a.d:dd};
-    };
-    const placed=[],cabs=[];
-    // AI may suggest a finish; fall back to the project default if it sends junk
-    const fxFinish=METAL_FINISHES.some(f=>f.key===plan.fixtureFinish)?plan.fixtureFinish:(room.fixtureFinish||"chrome");
-    const bathingType=(plan.bathingFixture&&DEFS[plan.bathingFixture])?plan.bathingFixture:"tubshower";
-
-    for(const role of["bathing","vanity","toilet","linen"]){
-      const asgn=assignments[role];
-      if(!asgn||asgn.wall!==wallName) continue;
-      let type=null,w=0,h=0,d=0,notes="";
-      if(role==="bathing"){
-        type=bathingType;
-        const dd=dim(type,DEFS[type].w,DEFS[type].h,DEFS[type].d);
-        w=dd.w;h=dd.h;d=dd.d;notes=DEFS[type].label;
-      } else if(role==="vanity"){
-        const dd=dim("vanity",36,32,21);
-        type="vanity_sink";
-        w=plan.vanityWidth||dd.w;h=dd.h;d=dd.d;
-        notes=w>=60?"Double vanity \u2014 sink base":"Vanity sink base";
-      } else if(role==="toilet"){
-        const dd=dim("toilet",20,31,29);
-        type="toilet";w=dd.w;h=dd.h;d=dd.d;notes="Toilet";
-      } else if(role==="linen"){
-        type="linen";w=plan.linenWidth||18;h=84;d=21;notes="Linen tower";
-      }
-      if(!type) continue;
-      if(w>wallW) w=wallW;
-      let x=LE.resolveHint(asgn.hint,w,wallW,placed,wallName,features,utilities);
-      x=LE.nudge(x,w,wallW,doorObs);
-      x=clamp(Math.round(x),0,Math.max(0,wallW-w));
-      if(role==="toilet") x=LE.toiletInset(x,w,wallW);
-      placed.push({x,w,h,d,type,role,notes});
-    }
-
-    // Resolve overlaps left-to-right, holding a 5" clear gap either side of the toilet
-    placed.sort((a,b)=>a.x-b.x);
-    const gapFor=(a,b)=>(a.role==="toilet"||b.role==="toilet")?5:0;
-    for(let i=1;i<placed.length;i++){
-      const minX=placed[i-1].x+placed[i-1].w+gapFor(placed[i-1],placed[i]);
-      if(placed[i].x<minX) placed[i].x=minX;
-    }
-    // If that run overhangs the wall, fully left-compact. This can never overlap:
-    // each item is pushed as far left as its neighbour (plus any toilet gap) allows.
-    // If it still overhangs afterwards, the fixtures genuinely don't fit and the
-    // checklist flags it rather than us silently stacking them on top of each other.
-    if(placed.length&&placed[placed.length-1].x+placed[placed.length-1].w>wallW){
-      let cursor=0;
-      for(let i=0;i<placed.length;i++){
-        const g=i>0?gapFor(placed[i-1],placed[i]):0;
-        placed[i].x=cursor+g;
-        cursor=placed[i].x+placed[i].w;
-      }
-    }
-    placed.forEach(p=>{p.x=Math.max(0,Math.round(p.x));});
-    // Re-check the toilet inset now that neighbours have settled, but never at the
-    // cost of reintroducing an overlap.
-    const tI=placed.findIndex(p=>p.role==="toilet");
-    if(tI>=0){
-      const t=placed[tI];
-      const lo=tI>0?placed[tI-1].x+placed[tI-1].w+5:0;
-      const hi=tI<placed.length-1?placed[tI+1].x-5-t.w:wallW-t.w;
-      if(hi>=lo) t.x=clamp(LE.toiletInset(t.x,t.w,wallW),lo,hi);
-    }
-
-    for(const p of placed){
-      const isFx=!!DEFS[p.type]?.fixture;
-      cabs.push({type:p.type,wall:wallName,w:p.w,h:p.h,d:p.d,x:p.x,
-        material:isFx?"painted_mdf":style.material,
-        doorStyle:isFx?"Shaker":style.doorStyle,
-        finish:isFx?finishLabel(fxFinish):style.finish,
-        finishKey:isFx?fxFinish:undefined,
-        notes:p.notes,
-        frontLayout:p.role==="vanity"?(p.w>=48?"3-drawer-over-door":"doors"):"doors"});
-    }
-
-    // ── UPPER STORAGE ──
-    const winObs=features.filter(f=>f.wall===wallName).map(f=>({x:Math.max(0,f.x-2),w:f.width+4}));
-    const addUpper=(type,cx,uw,uh,ud,note,ds)=>{
-      const x=clamp(Math.round(cx-uw/2),0,Math.max(0,wallW-uw));
-      if(LE.overlaps(x,uw,winObs)) return;
-      cabs.push({type,wall:wallName,w:uw,h:uh,d:ud,x,
-        material:style.material,doorStyle:ds||style.doorStyle,finish:style.finish,notes:note,frontLayout:"doors"});
-    };
-    const vanityP=placed.find(p=>p.role==="vanity");
-    if(vanityP&&plan.medicineCabinet!==false){
-      const opts=[36,30,24,18];
-      const mw=opts.find(o=>o<=Math.max(18,vanityP.w-4))||18;
-      addUpper("medicine",vanityP.x+vanityP.w/2,mw,30,6,"Mirrored medicine cabinet","Shaker");
-    }
-    const toiletP=placed.find(p=>p.role==="toilet");
-    if(toiletP&&plan.overToiletCabinet){
-      addUpper("otc",toiletP.x+toiletP.w/2,24,30,10,"Over-toilet storage");
-    }
-    return{cabs,placed};
-  },
-
-  buildBathLayout(plan,room,activeWalls){
-    const style={material:plan.material||"painted_mdf",doorStyle:plan.doorStyle||"Shaker",finish:plan.finish||"White"};
-    let allCabs=[];const allPlaced=[];
-    for(const wall of activeWalls){
-      const ww=wallWidth(wall,room);
-      const r=LE.buildBathWall(wall,ww,plan,room,style,plan.upperHeight||30);
-      allCabs=[...allCabs,...r.cabs];
-      r.placed.forEach(pp=>allPlaced.push({...pp,wall}));
-    }
-    allCabs=allCabs.map(c=>({id:uid(),...c,ix:c.ix||0,iy:c.iy||0,useStandard:true}));
-    return{cabinets:allCabs,placed:allPlaced};
   }
 };
 
@@ -1095,155 +880,12 @@ function buildChecklist(room,activeWalls,cabs,tri){
   return checks;
 }
 
-
-/* ─── NKBA BATHROOM CHECKLIST ─────────────────────────────────────────────── */
-function buildBathChecklist(room,activeWalls,cabs){
-  const checks=[];
-  const perp=w=>["East","West"].includes(w)?room.width:room.depth; // clear depth in front of that wall
-  const push=(rule,description,recommended,met,tip,fix)=>checks.push({rule,description,recommended,met,tip,fix});
-
-  const toilet=cabs.find(c=>c.type==="toilet");
-  const lav=cabs.find(c=>c.type==="vanity_sink"||c.type==="vanity"||c.type==="bathsink");
-  const bathing=cabs.find(c=>c.type==="shower"||c.type==="bathtub"||c.type==="tubshower");
-  const doorF=(room.features||[]).find(f=>f.type==="door");
-
-  // Clear space on either side of a fixture's centreline, on its own wall
-  const sideClear=(c)=>{
-    if(!c) return null;
-    const ww=wallWidth(c.wall,room);
-    const centre=c.x+c.w/2;
-    let left=centre,right=ww-centre;
-    for(const o of cabs){
-      if(o.id===c.id||o.wall!==c.wall) continue;
-      if(DEFS[o.type]?.row==="upper") continue;
-      const oEnd=o.x+o.w;
-      if(oEnd<=c.x) left=Math.min(left,centre-oEnd);
-      if(o.x>=c.x+c.w) right=Math.min(right,o.x-centre);
-    }
-    left=Math.max(0,left);right=Math.max(0,right);
-    return{left:Math.round(left),right:Math.round(right),min:Math.round(Math.min(left,right))};
-  };
-
-  // 1 — Toilet centreline clearance
-  if(toilet){
-    const sc=sideClear(toilet);
-    push("Toilet centreline clearance",
-      'Measured centre of bowl to nearest wall or fixture \u2014 currently '+sc.left+'" left, '+sc.right+'" right',
-      '18" (15" minimum)', sc.min>=15,
-      "Ontario Building Code and NKBA both want clear space either side of the bowl so the toilet is comfortable to use and serviceable.",
-      sc.min>=15?null:'Shift the toilet '+(15-sc.min)+'" toward the open side, or narrow the neighbouring vanity by '+(15-sc.min)+'".');
-    const front=perp(toilet.wall)-toilet.d;
-    push("Toilet front clearance",
-      'Clear floor space in front of the bowl \u2014 currently '+Math.round(front)+'"',
-      '30" (21" minimum)', front>=21,
-      "This is the space you actually stand in. Under 21\" and the room feels tight the moment the door swings in.",
-      front>=21?null:"Move the toilet to a wall with more depth in front of it, or reduce the opposite wall's cabinet depth.");
-  } else {
-    push("Toilet placed",'No toilet in the layout yet','1 water closet',false,
-      "Every bathroom needs the toilet located before the rest of the layout can be checked.",
-      "Add a toilet from the Fixtures section of the design sidebar, or run AI recommendations.");
-  }
-
-  // 2 — Lavatory
-  if(lav){
-    const sc=sideClear(lav);
-    push("Lavatory centreline to sidewall",
-      'Sink centre to nearest wall or fixture \u2014 currently '+sc.min+'"',
-      '20" (15" minimum)', sc.min>=15,
-      "Elbow room at the sink. Tight to a sidewall makes washing awkward and splashes the wall finish.",
-      sc.min>=15?null:'Move the vanity '+(15-sc.min)+'" off the wall, or use a narrower vanity so the sink centres further out.');
-    const front=perp(lav.wall)-lav.d;
-    push("Lavatory front clearance",
-      'Clear floor space in front of the vanity \u2014 currently '+Math.round(front)+'"',
-      '30" (21" minimum)', front>=21,
-      "You need room to bend over the sink without backing into whatever is behind you.",
-      front>=21?null:"Use a shallower vanity (18\" instead of 21\") or relocate it to a longer wall.");
-    push("Vanity height",
-      'Finished vanity height is '+lav.h+'" (plus top)','32"\u201336" comfort height',
-      lav.h>=30&&lav.h<=36,
-      "Comfort-height vanities (32\"\u201336\") have replaced the old 30\" standard on almost every job.",
-      (lav.h>=30&&lav.h<=36)?null:"Set the vanity height to 32\"\u201334.5\" in the properties panel.");
-  } else {
-    push("Lavatory placed",'No sink or vanity in the layout yet','At least 1 lavatory',false,
-      "The lavatory anchors the storage plan \u2014 place it before adding linen or medicine cabinets.",
-      "Add a vanity sink base or pedestal sink from the design sidebar.");
-  }
-
-  // 3 — Bathing fixture
-  if(bathing){
-    if(bathing.type==="shower"){
-      const ok=bathing.w>=30&&bathing.d>=30;
-      push("Shower size",
-        'Interior is '+bathing.w+'" \u00d7 '+bathing.d+'"','36" \u00d7 36" (30" \u00d7 30" minimum)', ok,
-        "30\u00d730 is the code floor. 36\u00d736 is where a shower stops feeling like a phone booth.",
-        ok?null:'Increase the shower to at least 30" \u00d7 30" \u2014 currently '+bathing.w+'" \u00d7 '+bathing.d+'".');
-    } else {
-      const ok=bathing.w>=54;
-      push("Tub length",
-        'Tub is '+bathing.w+'" long','60" standard (54" minimum)', ok,
-        "60\" is the standard alcove tub. Anything under 54\" is a soaker and should be flagged to the client.",
-        ok?null:"Widen the tub opening to 60\", or confirm with the client that a short soaker tub is intended.");
-    }
-    const front=perp(bathing.wall)-bathing.d;
-    push("Bathing fixture access",
-      'Clear floor space in front is '+Math.round(front)+'"','30" (21" minimum)', front>=21,
-      "You need standing room to step in and out, and to towel off.",
-      front>=21?null:"Move the tub or shower to the wall with the most open floor in front of it.");
-  } else {
-    push("Bathing fixture placed",'No tub or shower in the layout yet','1 tub or shower',false,
-      "Powder rooms are the exception \u2014 if this is a two-piece, this check can be ignored.",
-      "Add a shower, bathtub, or tub/shower combo \u2014 or ignore this if it's a powder room.");
-  }
-
-  // 4 — Door
-  if(doorF){
-    push("Door clear opening",
-      'Entry door is '+doorF.width+'" wide on the '+doorF.wall+' wall','32" clear (34" rough opening)',
-      doorF.width>=32,
-      "32\" clear is the accessibility benchmark and what most renovations should aim for.",
-      doorF.width>=32?null:'Widen the door opening to 32" clear \u2014 currently '+doorF.width+'".');
-  }
-
-  // 5 — Do the fixtures physically fit their walls?
-  const over=[];
-  for(const w of activeWalls){
-    const ww=wallWidth(w,room);
-    const onWall=cabs.filter(c=>c.wall===w&&DEFS[c.type]?.row!=="upper");
-    const maxEnd=onWall.reduce((m,c)=>Math.max(m,c.x+c.w),0);
-    if(maxEnd>ww+0.5) over.push(w+" wall by "+Math.ceil(maxEnd-ww)+'"');
-  }
-  push("Fixtures fit the wall",
-    over.length?("Overhanging: "+over.join(", ")):"Everything sits within its wall length",
-    "All fixtures inside the wall", over.length===0,
-    "Fixtures are placed to their real sizes. If a run overhangs, the room genuinely can't take that combination on one wall.",
-    over.length?"Move a fixture to another wall, choose a smaller tub or vanity, or check the wall lengths in Room Setup.":null);
-
-  // 6 — Circulation
-  const deepest=Math.max(0,...cabs.filter(c=>DEFS[c.type]?.row!=="upper").map(c=>c.d||0));
-  const walkway=Math.min(room.width,room.depth)-deepest;
-  push("Walkway / circulation",
-    'Narrowest clear path is about '+Math.round(walkway)+'"','36" (32" minimum)', walkway>=32,
-    "This is the path between fixtures. Under 32\" and two people can't pass, and the door may not clear.",
-    walkway>=32?null:"Reduce fixture depth on one wall, or reconsider which walls carry fixtures.");
-
-  // 7 — GFCI
-  const hasElec=(room.utilities||[]).some(u=>u.type==="electrical"&&(!lav||u.wall===lav.wall));
-  push("GFCI receptacle at lavatory",
-    hasElec?"Electrical marked on the vanity wall":"No electrical marked near the lavatory",
-    'Within 36" of the sink, GFCI protected', hasElec,
-    "Required by the Canadian Electrical Code in every bathroom. Mark it so the electrician sees it on the drawings.",
-    hasElec?null:"Add an electrical marker on the vanity wall in Room Setup so it prints on the shop drawings.");
-
-  return checks;
-}
-
 const makeCab=(type,wall,all,ww)=>{
   const def=DEFS[type];
   const row=all.filter(c=>c.wall===wall&&DEFS[c.type]?.row===def.row);
   const nx=row.length?Math.max(...row.map(c=>c.x+c.w))+3:3;
   return{id:uid(),type,w:def.w,h:def.h,d:def.d,x:Math.max(0,ww?Math.min(nx,ww-def.w):nx),
-    ix:0,iy:0,wall:type==="island"?"Island":wall,material:"maple",doorStyle:"Shaker",finish:"Natural",
-    notes:DEFS[type]?.fixture?def.label:"",useStandard:true};
+    ix:0,iy:0,wall:type==="island"?"Island":wall,material:"maple",doorStyle:"Shaker",finish:"Natural",notes:"",useStandard:true};
 };
 
 const makeCornerCab=(type,corner,room)=>{
@@ -1254,160 +896,6 @@ const makeCornerCab=(type,corner,room)=>{
     wall:walls[0]||"South",corner,cornerAccessory:defaultAcc,
     material:"maple",doorStyle:"Shaker",finish:"Natural",notes:def.label,useStandard:true};
 };
-
-
-/* ─── METAL FINISH PICKER ─────────────────────────────────────────────────── */
-function FinishPicker({value,onChange,compact}){
-  const cur=finishDef(value);
-  return(
-    <div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:compact?5:7}}>
-        {METAL_FINISHES.filter(f=>f.key!=="tbd").map(f=>{
-          const on=f.key===cur.key;
-          return(
-            <button key={f.key} onClick={()=>onChange(f.key)} title={f.label}
-              style={{width:compact?22:26,height:compact?22:26,borderRadius:"50%",cursor:"pointer",padding:0,
-                background:"linear-gradient(135deg,"+f.metal+" 0%,"+f.dark+" 100%)",
-                border:on?`2.5px solid ${T.amber}`:`1.5px solid ${T.border}`,
-                boxShadow:on?"0 0 0 2px rgba(193,122,58,0.2)":"none",transition:"all 0.15s"}}/>
-          );
-        })}
-      </div>
-      <select value={cur.key} onChange={e=>onChange(e.target.value)} style={{...IB,padding:"7px 10px",width:"100%"}}>
-        {METAL_FINISHES.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
-      </select>
-    </div>
-  );
-}
-
-/* ─── BATHROOM FIXTURE GRAPHICS ───────────────────────────────────────────── */
-// Elevation (front view). x,y = top-left of the fixture box in px. mono = shop-drawing line style.
-function FixtureElev({type,x,y,w,h,hIn,mono,label=true,finishKey}){
-  const F=mono?"#F4EFE7":"#E4DCCE", S=mono?"#555":"#9A8060", G=mono?"#EDE8DE":"#D8EAF4";
-  const D=mono?"#777":"#8A7060", TXT=mono?"#666":"#8A7A66";
-  // Metal trim takes the selected finish. Shop drawings stay monochrome line-art.
-  const fin=finishDef(finishKey);
-  const M=mono?D:fin.metal, MD=mono?D:fin.dark;
-  const sw=mono?0.8:1;
-  const cap=(el)=>(
-    <g>
-      {el}
-      {label&&w>34&&<text x={x+w/2} y={y+h+ (mono?11:13)} textAnchor="middle" fill={TXT} fontSize={mono?8:9} fontFamily="DM Sans" letterSpacing={0.5}>{(DEFS[type]?.label||"").toUpperCase()}</text>}
-    </g>
-  );
-
-  if(type==="toilet"){
-    const tkH=h*0.42, bwY=y+tkH;
-    return cap(<g>
-      <rect x={x+w*0.09} y={y+h*0.04} width={w*0.82} height={tkH-h*0.04} fill={F} stroke={S} strokeWidth={sw} rx={3}/>
-      <rect x={x+w*0.05} y={y} width={w*0.90} height={h*0.06} fill={F} stroke={S} strokeWidth={sw} rx={2}/>
-      <rect x={x+w*0.14} y={bwY} width={w*0.72} height={h*0.42} fill={F} stroke={S} strokeWidth={sw} rx={w*0.26}/>
-      <line x1={x+w*0.16} y1={bwY+h*0.07} x2={x+w*0.84} y2={bwY+h*0.07} stroke={D} strokeWidth={sw*0.8}/>
-      <rect x={x+w*0.30} y={y+h*0.83} width={w*0.40} height={h*0.17} fill={F} stroke={S} strokeWidth={sw} rx={2}/>
-      <rect x={x+w*0.03} y={y+h*0.12} width={w*0.07} height={h*0.05} fill={M} stroke={MD} strokeWidth={sw*0.4} rx={1}/>
-    </g>);
-  }
-
-  if(type==="bathsink"){
-    const bH=h*0.24;
-    return cap(<g>
-      <rect x={x} y={y} width={w} height={bH} fill={F} stroke={S} strokeWidth={sw} rx={4}/>
-      <ellipse cx={x+w/2} cy={y+bH*0.62} rx={w*0.30} ry={bH*0.30} fill="none" stroke={D} strokeWidth={sw*0.8}/>
-      <rect x={x+w/2-w*0.03} y={y-h*0.05} width={w*0.06} height={h*0.05} fill={M} stroke={MD} strokeWidth={sw*0.4} rx={1}/>
-      <polygon points={(x+w*0.34)+","+(y+bH)+" "+(x+w*0.66)+","+(y+bH)+" "+(x+w*0.60)+","+(y+h*0.90)+" "+(x+w*0.71)+","+(y+h)+" "+(x+w*0.29)+","+(y+h)+" "+(x+w*0.40)+","+(y+h*0.90)}
-        fill={F} stroke={S} strokeWidth={sw}/>
-    </g>);
-  }
-
-  if(type==="bathtub"){
-    return cap(<g>
-      <rect x={x} y={y+h*0.14} width={w} height={h*0.86} fill={F} stroke={S} strokeWidth={sw} rx={3}/>
-      <rect x={x-1} y={y} width={w+2} height={h*0.16} fill={mono?"#E8E0D5":"#D6CBB8"} stroke={S} strokeWidth={sw} rx={2}/>
-      <line x1={x+w*0.06} y1={y+h*0.55} x2={x+w*0.94} y2={y+h*0.55} stroke={D} strokeWidth={sw*0.6} strokeDasharray="5,4" opacity={0.6}/>
-      <circle cx={x+w*0.12} cy={y+h*0.08} r={Math.min(w,h)*0.06} fill="none" stroke={M} strokeWidth={sw*1.4}/>
-    </g>);
-  }
-
-  if(type==="shower"){
-    return cap(<g>
-      <rect x={x} y={y} width={w} height={h} fill={G} fillOpacity={mono?1:0.45} stroke={S} strokeWidth={sw*1.4} rx={2}/>
-      <rect x={x+w*0.04} y={y+h*0.03} width={w*0.92} height={h*0.91} fill="none" stroke={M} strokeWidth={sw*1.3}/>
-      <line x1={x+w*0.52} y1={y+h*0.03} x2={x+w*0.52} y2={y+h*0.94} stroke={M} strokeWidth={sw*1.2}/>
-      <rect x={x+w*0.44} y={y+h*0.46} width={w*0.05} height={h*0.07} fill={M} stroke={MD} strokeWidth={sw*0.4} rx={2}/>
-      <line x1={x+w*0.14} y1={y+h*0.07} x2={x+w*0.30} y2={y+h*0.07} stroke={M} strokeWidth={sw*1.8} strokeLinecap="round"/>
-      <circle cx={x+w*0.30} cy={y+h*0.09} r={Math.min(w*0.09,7)} fill="none" stroke={M} strokeWidth={sw*1.6}/>
-      <line x1={x+w*0.10} y1={y+h*0.70} x2={x+w*0.36} y2={y+h*0.34} stroke="#fff" strokeWidth={sw*1.6} opacity={mono?0:0.5}/>
-      <rect x={x} y={y+h*0.94} width={w} height={h*0.06} fill={mono?"#E8E0D5":"#C4B49A"} stroke={S} strokeWidth={sw}/>
-    </g>);
-  }
-
-  if(type==="tubshower"){
-    const tf=clamp(20/(hIn||80),0.14,0.42), surH=h*(1-tf), tubY=y+surH;
-    const rows=Math.max(3,Math.round(surH/26));
-    return cap(<g>
-      <rect x={x} y={y} width={w} height={surH} fill={mono?"#FAF7F2":"#EDE7DC"} stroke={S} strokeWidth={sw} rx={1}/>
-      {Array.from({length:rows}).map((_,i)=>(
-        <line key={"r"+i} x1={x+2} y1={y+surH*(i+1)/(rows+1)} x2={x+w-2} y2={y+surH*(i+1)/(rows+1)} stroke={D} strokeWidth={sw*0.4} opacity={0.5}/>
-      ))}
-      <rect x={x+w*0.5} y={y} width={w*0.5} height={surH} fill={G} fillOpacity={mono?0.4:0.4} stroke={S} strokeWidth={sw}/>
-      <rect x={x+w*0.49} y={y+surH*0.44} width={w*0.04} height={surH*0.09} fill={M} stroke={MD} strokeWidth={sw*0.4} rx={2}/>
-      <line x1={x+w*0.10} y1={y+surH*0.09} x2={x+w*0.24} y2={y+surH*0.09} stroke={M} strokeWidth={sw*1.8} strokeLinecap="round"/>
-      <circle cx={x+w*0.24} cy={y+surH*0.11} r={Math.min(w*0.06,6)} fill="none" stroke={M} strokeWidth={sw*1.6}/>
-      <rect x={x+w*0.14} y={y+surH-Math.max(4,surH*0.06)} width={w*0.05} height={Math.max(3,surH*0.04)} fill={M} rx={1}/>
-      <rect x={x} y={tubY} width={w} height={h-surH} fill={F} stroke={S} strokeWidth={sw} rx={2}/>
-      <rect x={x-1} y={tubY-2} width={w+2} height={Math.max(3,(h-surH)*0.18)} fill={mono?"#E8E0D5":"#D6CBB8"} stroke={S} strokeWidth={sw} rx={2}/>
-    </g>);
-  }
-  return null;
-}
-
-// Floor plan (top-down). r = {x,y,w,h} in px, wall tells us which edge is the wall.
-const wallSide=wall=>wall==="North"?"top":wall==="East"?"right":wall==="West"?"left":"bottom";
-function FixturePlan({type,r,wall,mono}){
-  const F=mono?"#F4EFE7":"#DDD4C4", S=mono?"#555":"#8A7A62", D=mono?"#777":"#9A8878";
-  const G=mono?"#EDE8DE":"#CFE2EE";
-  const side=wallSide(wall), sw=mono?0.8:1;
-
-  if(type==="toilet"){
-    const t=0.34; let tank,bcx,bcy,brx,bry;
-    if(side==="bottom"){tank={x:r.x+r.w*0.10,y:r.y+r.h*(1-t),w:r.w*0.80,h:r.h*t};bcx=r.x+r.w/2;bcy=r.y+r.h*0.36;brx=r.w*0.34;bry=r.h*0.30;}
-    else if(side==="top"){tank={x:r.x+r.w*0.10,y:r.y,w:r.w*0.80,h:r.h*t};bcx=r.x+r.w/2;bcy=r.y+r.h*0.64;brx=r.w*0.34;bry=r.h*0.30;}
-    else if(side==="left"){tank={x:r.x,y:r.y+r.h*0.10,w:r.w*t,h:r.h*0.80};bcx=r.x+r.w*0.64;bcy=r.y+r.h/2;brx=r.w*0.30;bry=r.h*0.34;}
-    else {tank={x:r.x+r.w*(1-t),y:r.y+r.h*0.10,w:r.w*t,h:r.h*0.80};bcx=r.x+r.w*0.36;bcy=r.y+r.h/2;brx=r.w*0.30;bry=r.h*0.34;}
-    return(<g>
-      <rect x={tank.x} y={tank.y} width={tank.w} height={tank.h} fill={F} stroke={S} strokeWidth={sw} rx={2}/>
-      <ellipse cx={bcx} cy={bcy} rx={brx} ry={bry} fill={F} stroke={S} strokeWidth={sw}/>
-      <ellipse cx={bcx} cy={bcy} rx={brx*0.62} ry={bry*0.62} fill="none" stroke={D} strokeWidth={sw*0.7}/>
-    </g>);
-  }
-
-  if(type==="bathsink"){
-    return(<g>
-      <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={F} stroke={S} strokeWidth={sw} rx={3}/>
-      <ellipse cx={r.x+r.w/2} cy={r.y+r.h/2} rx={r.w*0.32} ry={r.h*0.32} fill="none" stroke={D} strokeWidth={sw}/>
-    </g>);
-  }
-
-  if(type==="bathtub"||type==="tubshower"){
-    const horiz=r.w>=r.h;
-    const dcx=horiz?r.x+r.w*0.15:r.x+r.w/2, dcy=horiz?r.y+r.h/2:r.y+r.h*0.15;
-    return(<g>
-      <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={type==="tubshower"?G:F} fillOpacity={mono?1:0.75} stroke={S} strokeWidth={sw*1.2} rx={4}/>
-      <rect x={r.x+r.w*0.07} y={r.y+r.h*0.10} width={r.w*0.86} height={r.h*0.80} fill="none" stroke={D} strokeWidth={sw*0.8} rx={Math.min(r.w,r.h)*0.18}/>
-      <circle cx={dcx} cy={dcy} r={Math.min(r.w,r.h)*0.07} fill="none" stroke={D} strokeWidth={sw}/>
-    </g>);
-  }
-
-  if(type==="shower"){
-    return(<g>
-      <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={G} fillOpacity={mono?1:0.6} stroke={S} strokeWidth={sw*1.4} rx={2}/>
-      <line x1={r.x} y1={r.y} x2={r.x+r.w} y2={r.y+r.h} stroke={D} strokeWidth={sw*0.6}/>
-      <line x1={r.x+r.w} y1={r.y} x2={r.x} y2={r.y+r.h} stroke={D} strokeWidth={sw*0.6}/>
-      <circle cx={r.x+r.w/2} cy={r.y+r.h/2} r={Math.min(r.w,r.h)*0.09} fill="none" stroke={D} strokeWidth={sw}/>
-    </g>);
-  }
-  return null;
-}
 
 /* ─── GLOBAL STYLES ───────────────────────────────────────────────────────── */
 const GS=()=>(
@@ -1520,10 +1008,9 @@ function FeatureEditor({features,setFeatures,activeWalls,room}){
 }
 
 /* ─── APPLIANCE EDITOR ─────────────────────────────────────────────────────── */
-function ApplianceEditor({appliances,setAppliances,activeWalls,room,types,title,hint,emptyText}){
-  const TYPES=types||APPLIANCE_TYPES;
+function ApplianceEditor({appliances,setAppliances,activeWalls,room}){
   const add=type=>{
-    const def=TYPES.find(a=>a.key===type);
+    const def=APPLIANCE_TYPES.find(a=>a.key===type);
     if(!def)return;
     const wall=activeWalls[0]||"South";
     const ww=wallWidth(wall,room);
@@ -1534,25 +1021,24 @@ function ApplianceEditor({appliances,setAppliances,activeWalls,room,types,title,
   const IS={...IB,padding:"5px 8px",fontSize:13};
   // Which appliance types haven't been added yet?
   const usedTypes=appliances.map(a=>a.type);
-  const available=TYPES.filter(t=>!usedTypes.includes(t.key));
+  const available=APPLIANCE_TYPES.filter(t=>!usedTypes.includes(t.key));
 
   return(
     <Card>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h3 style={{fontSize:16,fontWeight:600,color:T.ink}}>{title||"Appliances"}</h3>
+        <h3 style={{fontSize:16,fontWeight:600,color:T.ink}}>Appliances</h3>
         {available.length>0&&(
           <select onChange={e=>{if(e.target.value){add(e.target.value);e.target.value="";}}} defaultValue="" style={{...IS,width:"auto",padding:"6px 12px",fontSize:12,color:T.amber,fontWeight:600,borderColor:T.amber,background:"#fff"}}>
-            <option value="" disabled>+ Add {title?title.toLowerCase().replace(/s$/,""):"appliance"}</option>
+            <option value="" disabled>+ Add appliance</option>
             {available.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
           </select>
         )}
       </div>
       {appliances.length===0
-        ?<p style={{fontSize:13,color:T.faint,fontStyle:"italic"}}>{emptyText||"No appliances added yet. The AI will assume standard sizes if left empty."}</p>
+        ?<p style={{fontSize:13,color:T.faint,fontStyle:"italic"}}>No appliances added yet. The AI will assume standard sizes if left empty.</p>
         :<div style={{display:"flex",flexDirection:"column",gap:8}}>
           {appliances.map(a=>{
-            const emoji={fridge:"🧊",range:"🔥",cooktop:"🔥",wallOven:"♨️",dishwasher:"🫧",microwave:"📡",rangeHood:"💨",sink:"🚰",
-              toilet:"🚽",shower:"🚿",bathtub:"🛁",tubshower:"🛁",bathsink:"🧼",vanity:"🪞"}[a.type]||"📦";
+            const emoji={fridge:"🧊",range:"🔥",cooktop:"🔥",wallOven:"♨️",dishwasher:"🫧",microwave:"📡",rangeHood:"💨",sink:"🚰"}[a.type]||"📦";
             return(
               <div key={a.id} style={{display:"grid",gridTemplateColumns:"auto 1fr 60px 60px 60px 90px auto",gap:8,alignItems:"center",padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
                 <span style={{fontSize:18}}>{emoji}</span>
@@ -1582,7 +1068,7 @@ function ApplianceEditor({appliances,setAppliances,activeWalls,room,types,title,
           })}
         </div>
       }
-      <p style={{fontSize:12,color:T.faint,marginTop:10}}>{hint||"Appliance dimensions help the AI place cabinets with proper clearance."}</p>
+      <p style={{fontSize:12,color:T.faint,marginTop:10}}>Appliance dimensions help the AI place cabinets with proper clearance.</p>
     </Card>
   );
 }
@@ -1782,28 +1268,13 @@ function TrimAccessoriesCard({room,setRoom}){
 /* ─── HARDWARE CARD ───────────────────────────────────────────────────────── */
 function HardwareCard({room,setRoom}){
   const hw=room.hardware||DEFAULT_HARDWARE;
-  const bath=isBath(room);
   const upd=(k,v)=>setRoom(r=>({...r,hardware:{...(r.hardware||DEFAULT_HARDWARE),[k]:v}}));
   const IS={...IB,padding:"7px 10px"};
   return(
     <Card>
-      <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:6}}>Hardware{bath?" & finishes":""}</h3>
+      <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:6}}>Hardware</h3>
       <p style={{fontSize:12,color:T.faint,marginBottom:14}}>Quantities auto-calculated from your cabinet doors and drawers.</p>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        {/* Fixture trim finish — bathrooms only */}
-        {bath&&(
-          <div style={{padding:"10px 14px",background:T.amberLight,border:`1px solid #F0D0A0`,borderRadius:8}}>
-            <div style={{fontSize:14,fontWeight:500,color:T.ink,marginBottom:2}}>Plumbing fixture finish</div>
-            <p style={{fontSize:11,color:T.muted,marginBottom:8}}>Faucets, shower heads, handles and flush levers. New fixtures pick this up automatically — change an individual one in the properties panel.</p>
-            <FinishPicker value={room.fixtureFinish||"chrome"} onChange={k=>setRoom(r=>({...r,fixtureFinish:k}))}/>
-          </div>
-        )}
-        {/* Cabinet hardware finish */}
-        <div style={{padding:"10px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
-          <div style={{fontSize:14,fontWeight:500,color:T.ink,marginBottom:2}}>Cabinet hardware finish</div>
-          <p style={{fontSize:11,color:T.muted,marginBottom:8}}>Pulls and knobs. {bath?"Match this to the fixture finish above unless the client wants a deliberate mix.":"Prints on the quote, order sheet and shop drawings."}</p>
-          <FinishPicker value={hw.finish||"brushed_nickel"} onChange={k=>upd("finish",k)}/>
-        </div>
         {/* Pulls */}
         <div style={{padding:"10px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
           <div style={{fontSize:14,fontWeight:500,color:T.ink,marginBottom:6}}>Pulls / Knobs</div>
@@ -1929,7 +1400,6 @@ function RoomSetupView({room,setRoom,activeWalls,setActiveWalls,onNext}){
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState(null);
 
-  const bath=isBath(room);
   const toggleWall=w=>setActiveWalls(p=>p.includes(w)?p.filter(x=>x!==w):[...p,w]);
 
   const analyze=async()=>{
@@ -1938,7 +1408,7 @@ function RoomSetupView({room,setRoom,activeWalls,setActiveWalls,onNext}){
     try{
       const txt=await callClaude([{role:"user",content:[
         {type:"image",source:{type:"base64",media_type:blueprint.mimeType,data:blueprint.base64}},
-        {type:"text",text:`Analyze this image (room photo, hand sketch, or floor plan) and extract ${bath?"bathroom":"kitchen"} dimensions.
+        {type:"text",text:`Analyze this image (room photo, hand sketch, or floor plan) and extract kitchen dimensions.
 
 Return ONLY valid JSON, no markdown:
 {
@@ -1961,7 +1431,7 @@ CRITICAL RULES:
 - "width" = the horizontal wall measurement shown (e.g. 7' = 84")  
 - "depth" = the vertical/perpendicular wall measurement shown (e.g. 8' = 96")
 - If a measurement says 8' for depth, depth = 96 (not 72 or 84)
-- "walls" = ${bath?"for a bathroom, return all four: [\"South\",\"North\",\"East\",\"West\"] — fixtures can land on any wall":"only walls with cabinet space. L-shape=2 walls, U-shape=3, Galley=2 opposite"}
+- "walls" = only walls with cabinet space. L-shape=2 walls, U-shape=3, Galley=2 opposite
 - For "features": include ALL windows and doors visible. "x" = inches from left corner of that wall
 - Windows typically: height=36, fromFloor=40. Doors: height=80, fromFloor=0
 - If no features visible, return empty array []`}
@@ -1971,8 +1441,7 @@ CRITICAL RULES:
       if(p.width) setRoom(r=>({...r,width:clamp(p.width,60,600)}));
       if(p.depth) setRoom(r=>({...r,depth:clamp(p.depth,60,600)}));
       if(p.height) setRoom(r=>({...r,height:clamp(p.height,84,144)}));
-      if(bath) setActiveWalls([...ALL_WALLS]);
-      else if(p.walls?.length) setActiveWalls(p.walls.filter(w=>ALL_WALLS.includes(w)));
+      if(p.walls?.length) setActiveWalls(p.walls.filter(w=>ALL_WALLS.includes(w)));
       if(p.features) setRoom(r=>({...r,features:(p.features||[]).map(f=>({...f,id:fid()}))}));
     }catch(e){setErr("Couldn't read this image. Set dimensions and walls manually below.");}
     setLoading(false);
@@ -2068,8 +1537,8 @@ CRITICAL RULES:
         </Card>
 
         <Card style={{marginBottom:20}}>
-          <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:6}}>{bath?"Which walls are in play?":"Which walls have cabinet space?"}</h3>
-          <p style={{fontSize:14,color:T.muted,marginBottom:16}}>{bath?"Bathrooms normally use all four — fixtures and storage can land on any wall.":"Galley = 2 opposite · L-shape = 2 adjacent · U-shape = 3"}</p>
+          <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:6}}>Which walls have cabinet space?</h3>
+          <p style={{fontSize:14,color:T.muted,marginBottom:16}}>Galley = 2 opposite · L-shape = 2 adjacent · U-shape = 3</p>
           <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
             {ALL_WALLS.map(w=>{
               const isOn=activeWalls.includes(w);
@@ -2110,7 +1579,7 @@ CRITICAL RULES:
         </Card>
         </Section>
 
-        <Section num="C" title={bath?"Windows, doors & fixtures":"Windows, doors & appliances"} desc={bath?"Mark windows and doors so fixtures don't block them. Add the toilet, tub, shower, vanity and sink with real dimensions — the layout engine places to these numbers, not to guesses.":"Mark windows and doors so cabinets don't block them. Add appliances with dimensions so the AI knows where to leave gaps. Appliances can be placed on walls or the island."}>
+        <Section num="C" title="Windows, doors & appliances" desc="Mark windows and doors so cabinets don't block them. Add appliances with dimensions so the AI knows where to leave gaps. Appliances can be placed on walls or the island.">
         <div style={{marginBottom:20}}>
           <FeatureEditor
             features={room.features||[]}
@@ -2122,11 +1591,7 @@ CRITICAL RULES:
           <ApplianceEditor
             appliances={room.appliances||[]}
             setAppliances={a=>setRoom(r=>({...r,appliances:typeof a==="function"?a(r.appliances||[]):a}))}
-            activeWalls={activeWalls} room={room}
-            types={bath?BATH_FIXTURE_TYPES:APPLIANCE_TYPES}
-            title={bath?"Fixtures":"Appliances"}
-            emptyText={bath?"No fixtures added yet. Add them here with real sizes and the layout engine will place to those numbers.":undefined}
-            hint={bath?"Fixture dimensions drive placement and the NKBA clearance checks. A 60\" tub and a 54\" tub give very different layouts.":undefined}/>
+            activeWalls={activeWalls} room={room}/>
         </div>
 
         <div>
@@ -2145,11 +1610,11 @@ CRITICAL RULES:
           <TrimAccessoriesCard room={room} setRoom={setRoom}/>
         </Section>
 
-        <Section num="F" title={bath?"Hardware & finishes":"Hardware"} desc={bath?"Pulls, hinges and slides, plus the metal finish for the plumbing trim — chrome, brushed nickel, matte black, gold and the rest. The finish shows in the elevation views and prints on every output.":"Pulls, hinges, and drawer slides. Quantities are auto-calculated from door and drawer counts when you build your layout."}>
+        <Section num="F" title="Hardware" desc="Pulls, hinges, and drawer slides. Quantities are auto-calculated from door and drawer counts when you build your layout.">
           <HardwareCard room={room} setRoom={setRoom}/>
         </Section>
 
-        <Section num="G" title={bath?"Vanity tops":"Countertops"} desc={bath?"Material, edge profile, and backsplash for the vanity top. Square footage is auto-calculated from your vanity layout.":"Material, edge profile, and backsplash. Square footage is auto-calculated from your base cabinet and island layout."}>
+        <Section num="G" title="Countertops" desc="Material, edge profile, and backsplash. Square footage is auto-calculated from your base cabinet and island layout.">
           <CountertopCard room={room} setRoom={setRoom}/>
         </Section>
 
@@ -2172,7 +1637,7 @@ CRITICAL RULES:
           </Card>
         </Section>
 
-        <Btn onClick={onNext} disabled={activeWalls.length===0} style={{fontSize:15,padding:"12px 28px"}}>Next: Get AI {bath?"bathroom":"kitchen"} layout →</Btn>
+        <Btn onClick={onNext} disabled={activeWalls.length===0} style={{fontSize:15,padding:"12px 28px"}}>Next: Get AI layout recommendations →</Btn>
       </div>
     </div>
   );
@@ -2242,100 +1707,8 @@ function RoomFootprint({room,activeWalls}){
 /* ─── STEP 2 — RECOMMENDATIONS ────────────────────────────────────────────── */
 function RecommendationsView({room,activeWalls,onApply,onSkip}){
   const [recs,setRecs]=useState(null),[loading,setLoading]=useState(false),[err,setErr]=useState(null);
-  const bath=isBath(room);
   const generate=async()=>{
     setLoading(true);setErr(null);
-
-    /* ── BATHROOM PATH ── */
-    if(bath){
-      try{
-        const wallDims=activeWalls.map(w=>w+": "+wallWidth(w,room)+'"').join(", ");
-        const featList=(room.features||[]).map(f=>f.type+" on "+f.wall+" wall at "+f.x+'" from left, '+f.width+'" wide').join("; ")||"none";
-        const fixList=(room.appliances||[]).map(a=>a.label+": "+a.w+'"W x '+a.h+'"H x '+a.d+'"D').join("; ")||"not specified — assume standard sizes";
-        const utilityList=(room.utilities||[]).map(u=>u.label+" on "+u.wall+" wall at "+u.x+'" from left').join("; ")||"none marked";
-        const sqft=((room.width/12)*(room.depth/12)).toFixed(1);
-
-        const txt=await callClaude([{role:"user",content:
-`You are an NKBA-certified bathroom designer. You decide WHERE things go — the software handles exact placement math and clearance checking.
-
-ROOM: ${room.width}" x ${room.depth}" x ${room.height}" ceiling (${sqft} sq ft)
-WALLS AVAILABLE: ${wallDims}
-WINDOWS/DOORS: ${featList}
-FIXTURE SIZES: ${fixList}
-UTILITIES MARKED: ${utilityList}
-
-YOUR JOB: assign each fixture to a wall with a placement hint, pick the bathing fixture, size the vanity, and choose finishes. The software calculates exact positions, holds NKBA clearances, and adds the wall storage.
-
-AVAILABLE HINTS:
-- "center" — centred on the wall
-- "end-left" / "end-right" — flush to one end of the wall
-- "corner-left" / "corner-right" — tucked into a corner
-- "under-window" — centred under the first window on that wall
-- "at-water" — at the marked water supply
-- "next-to-vanity" — immediately right of the vanity
-- "opposite-door" — the end of the wall furthest from the entry door
-
-RULES:
-- The toilet should not be the first thing visible from the doorway. Put it beside the door wall or behind the door swing where possible.
-- The toilet needs 15" from its centreline to any wall or fixture. Do not corner it tightly.
-- The vanity goes on the longest clear wall, ideally where water is already marked.
-- Do not put the vanity under a window — there is nowhere for the mirror.
-- The tub or shower goes on the longest uninterrupted wall. If the only option has a window in it, say so in warnings.
-- Group plumbing on as few walls as possible — every extra wet wall costs the client money. Explain the wet wall choice.
-- Under 40 sq ft, prefer a shower over a tub unless the room reads like a main bathroom.
-- Only assign "linen" if a wall genuinely has 18"+ of clear space left after the fixtures.
-
-Return ONLY valid JSON — no markdown:
-{
-  "layout": "Three-piece — single wet wall",
-  "material": "painted_mdf",
-  "doorStyle": "Shaker",
-  "finish": "White",
-  "fixtureFinish": "chrome",
-  "bathingFixture": "tubshower",
-  "vanityWidth": 36,
-  "medicineCabinet": true,
-  "overToiletCabinet": false,
-  "linenWidth": 18,
-  "upperHeight": 30,
-  "assignments": {
-    "vanity": {"wall": "${activeWalls[0]||"South"}", "hint": "center"},
-    "toilet": {"wall": "${activeWalls[1]||activeWalls[0]||"West"}", "hint": "end-right"},
-    "bathing": {"wall": "${activeWalls[2]||activeWalls[0]||"North"}", "hint": "center"},
-    "linen": {"wall": "${activeWalls[3]||activeWalls[0]||"East"}", "hint": "end-left"}
-  },
-  "explanation": "2-3 sentences explaining the layout and the wet wall decision.",
-  "tips": ["Specific actionable tip 1.", "Tip 2.", "Tip 3."],
-  "warnings": ["Any concerns about the space."]
-}
-
-"bathingFixture" must be exactly one of: "tubshower", "shower", "bathtub".
-"fixtureFinish" is the plumbing trim finish and must be exactly one of: "chrome", "brushed_nickel", "matte_black", "brushed_gold", "polished_brass", "champagne_bronze", "oil_rubbed_bronze", "matte_white". Pick one that suits the finishes you chose and say why in the explanation.
-Omit the "linen" key entirely if there is no room for it.`
-        }],1200);
-
-        const plan=parseJSON(txt);
-        if(room.toCeiling){
-          plan.upperHeight=room.height-UPPER_BTM-(room.bulkheadHeight||0);
-        } else if(room.bulkheadHeight>0){
-          plan.upperHeight=Math.min(plan.upperHeight||30,room.height-UPPER_BTM-room.bulkheadHeight);
-        }
-        const built=LE.buildBathLayout(plan,room,activeWalls);
-        const checklist=buildBathChecklist(room,activeWalls,built.cabinets);
-        setRecs({
-          layout:plan.layout,
-          explanation:plan.explanation,
-          workTriangle:null,
-          bestPractices:checklist,
-          cabinets:built.cabinets,
-          tips:plan.tips||[],
-          warnings:plan.warnings||[],
-          plan,bath:true
-        });
-      }catch(e){console.error(e);setErr("Could not generate — please try again.");}
-      setLoading(false);return;
-    }
-
     try{
       const sqft=((room.width/12)*(room.depth/12)).toFixed(1);
       const wallList=activeWalls.join(", ");
@@ -2428,7 +1801,7 @@ Return ONLY valid JSON — no markdown:
   return(
     <div style={{flex:1,overflowY:"auto",padding:"36px 48px",maxWidth:920}}>
       <div className="fade-up">
-        <h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:6}}>AI {bath?"bathroom":"kitchen"} layout</h1>
+        <h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:6}}>AI layout recommendations</h1>
         <p style={{fontSize:15,color:T.muted,marginBottom:8}}>Based on your {(room.width/12).toFixed(1)}' × {(room.depth/12).toFixed(1)}' space and NKBA best practices.</p>
         <div style={{display:"flex",gap:8,marginBottom:24,flexWrap:"wrap"}}>
           {activeWalls.map(w=><Badge key={w} color="amber">{w} wall</Badge>)}
@@ -2453,32 +1826,6 @@ Return ONLY valid JSON — no markdown:
                 <div style={{fontSize:26,fontWeight:600,fontFamily:"'Lora',serif",color:T.oak,marginBottom:10}}>{recs.layout}</div>
                 <p style={{fontSize:14,color:T.muted,lineHeight:1.7}}>{recs.explanation}</p>
               </Card>
-              {bath?(
-                <Card>
-                  <Lbl>Plumbing walls</Lbl>
-                  {(()=>{
-                    const wet=(recs.cabinets||[]).filter(c=>DEFS[c.type]?.fixture||c.type==="vanity_sink"||c.type==="vanity");
-                    const byWall={};
-                    wet.forEach(c=>{(byWall[c.wall]=byWall[c.wall]||[]).push(DEFS[c.type]?.label||c.type);});
-                    const walls=Object.keys(byWall);
-                    if(!walls.length) return <p style={{fontSize:13,color:T.muted}}>No plumbing fixtures placed.</p>;
-                    return(
-                      <div>
-                        {walls.map(w=>(
-                          <div key={w} style={{marginBottom:8}}>
-                            <div style={{fontSize:13,fontWeight:600,color:T.ink}}>{w} wall</div>
-                            <div style={{fontSize:13,color:T.muted}}>{byWall[w].join(" · ")}</div>
-                          </div>
-                        ))}
-                        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10}}>
-                          <Badge color={walls.length<=2?"green":"amber"}>{walls.length} wet wall{walls.length!==1?"s":""}</Badge>
-                          <span style={{fontSize:12,color:T.faint}}>Fewer walls = less rough-in</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </Card>
-              ):(
               <Card>
                 <Lbl>Work triangle</Lbl>
                 <div style={{display:"flex",gap:20,marginBottom:12}}>
@@ -2492,7 +1839,6 @@ Return ONLY valid JSON — no markdown:
                 </div>
                 <p style={{fontSize:13,color:T.muted}}>{recs.workTriangle?.note}</p>
               </Card>
-              )}
             </div>
             <Card>
               <Lbl style={{marginBottom:16}}>NKBA compliance checklist</Lbl>
@@ -2512,7 +1858,7 @@ Return ONLY valid JSON — no markdown:
               </div>
             </Card>
             <Card>
-              <Lbl style={{marginBottom:12}}>{bath?"Suggested fixture & cabinet plan":"Suggested cabinet plan"} — {recs.cabinets?.length} units</Lbl>
+              <Lbl style={{marginBottom:12}}>Suggested cabinet plan — {recs.cabinets?.length} units</Lbl>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:8}}>
                 {recs.cabinets?.map((c,i)=>(
                   <div key={i} style={{padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:7}}>
@@ -2564,8 +1910,7 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
     const c=cabs.find(x=>x.id===drag.current.id);if(!c)return;
     let nx=clamp(drag.current.cx0+(e.clientX-drag.current.mx0)/ES,0,wallW-c.w);
     const row=DEFS[c.type]?.row;
-    const grp=r=>r==="upper"?"upper":"floor"; // fixtures snap against base cabs too
-    const others=wallCabs.filter(o=>o.id!==c.id&&grp(DEFS[o.type]?.row)===grp(row));
+    const others=wallCabs.filter(o=>o.id!==c.id&&DEFS[o.type]?.row===row);
     for(const o of others){
       if(Math.abs(nx-(o.x+o.w))<SNAP) nx=o.x+o.w;
       if(Math.abs((nx+c.w)-o.x)<SNAP) nx=o.x-c.w;
@@ -2579,7 +1924,7 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
 
   // only warn on lower cabs — upper cabs at different height, not a real conflict
   const hasOverlap=c=>{
-    if(DEFS[c.type]?.row==="upper") return false;
+    if(DEFS[c.type]?.row!=="lower") return false;
     return wallFeatures.some(f=>{
       const cabEnd=c.x+c.w, featEnd=f.x+f.width;
       return c.x<featEnd&&cabEnd>f.x;
@@ -2651,7 +1996,7 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
       })}
 
       {/* Countertops — only base/vanity/island, not tall or corner pantry */}
-      {wallCabs.filter(hasCounter).map(c=>(
+      {wallCabs.filter(c=>DEFS[c.type]?.row==="lower"&&c.type!=="tall"&&c.type!=="corner_pantry").map(c=>(
         <rect key={`ct${c.id}`} x={PL+c.x*ES-1} y={FY-c.h*ES-2.5*ES} width={c.w*ES+2} height={2.5*ES} fill={ct} rx={1}/>
       ))}
 
@@ -2663,16 +2008,6 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
         // appliance visuals only make sense on lower / base cabinets
         const isSink=isLower&&notesHas(c,"sink"), isRange=isLower&&(notesHas(c,"range")||notesHas(c,"stove")), isFridge=isLower&&(notesHas(c,"fridge")||notesHas(c,"refrigerator"));
         const isWallOven=notesHas(c,"wall oven")||notesHas(c,"walloven");
-        if(DEFS[c.type]?.fixture){
-          return(
-            <g key={c.id} style={{cursor:"grab"}} onPointerDown={e=>onPD(e,c.id)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
-              <FixtureElev type={c.type} x={cx} y={cyy} w={cw} h={ch} hIn={c.h} finishKey={c.finishKey||room?.fixtureFinish}/>
-              {isSel&&<rect x={cx-3} y={cyy-3} width={cw+6} height={ch+6} fill="none" stroke={T.amber} strokeWidth={2} strokeDasharray="6,3" rx={2}/>}
-              {isOverlap&&!isSel&&<rect x={cx-2} y={cyy-2} width={cw+4} height={ch+4} fill="none" stroke="#CC4422" strokeWidth={1.5} strokeDasharray="4,3" rx={2}/>}
-              <text x={cx+cw/2} y={FY+18} textAnchor="middle" fill={isSel?T.amber:T.faint} fontSize={cw<50?9:11} fontFamily="DM Sans">{(cw>=40||isSel)?c.w+'"':""}</text>
-            </g>
-          );
-        }
         return(
           <g key={c.id} style={{cursor:"grab"}} onPointerDown={e=>onPD(e,c.id)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
             <rect x={cx} y={cyy} width={cw} height={bodyH}
@@ -2963,16 +2298,6 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland,onMoveWallCab}){
         const isSink=isLowerCab&&notesHas(c,"sink"),isRange=isLowerCab&&(notesHas(c,"range")||notesHas(c,"stove")),isFridge=isLowerCab&&(notesHas(c,"fridge")||notesHas(c,"refrigerator"));
         const isCooktop=isLowerCab&&notesHas(c,"cooktop");
         const isWallOven=notesHas(c,"wall oven")||notesHas(c,"walloven");
-        if(DEFS[c.type]?.fixture){
-          return(
-            <g key={c.id} style={{cursor:"grab"}} onPointerDown={e=>onPD(e,c)} onClick={e=>{e.stopPropagation();onSel(c.id);}}>
-              <FixturePlan type={c.type} r={r} wall={c.wall}/>
-              {isSel&&<rect x={r.x-3} y={r.y-3} width={r.w+6} height={r.h+6} fill="none" stroke={T.amber} strokeWidth={2} strokeDasharray="5,3" rx={3}/>}
-              <text x={r.x+r.w/2} y={r.y+r.h/2+3} textAnchor="middle" fill={isSel?T.amber:"#6A5A46"} fontSize={9} fontWeight={600}
-                fontFamily="DM Sans" stroke="#EDE5D8" strokeWidth={2.5} paintOrder="stroke">{cabCode(c)}</text>
-            </g>
-          );
-        }
         const fill=isCorner?"#B8A070":isIsland?"#C4A870":isUpper?"#D4CCBC":isFridge?"#C8BEB0":(isRange||isCooktop)?"#C4A888":isWallOven?"#C4A888":"#C8B898";
         // label
         const cornerLbl=c.type==="corner_base"?"LS":c.type==="blind_base"?"BC":c.type==="corner_upper"?"CU":c.type==="blind_upper"?"BU":c.type==="corner_pantry"?"CP":"";
@@ -3018,10 +2343,6 @@ function FloorPlanCanvas({cabs,room,sel,onSel,onMoveIsland,onMoveWallCab}){
         <circle cx={L+236} cy={B+39} r={5} fill="#4A90D9" fillOpacity={0.3} stroke="#4A90D9" strokeWidth={1}/>
         <text x={L+244} y={B+43} fill={T.faint} fontSize={11} fontFamily="DM Sans">Utility</text>
       </>}
-      {cabs.some(c=>DEFS[c.type]?.fixture)&&<>
-        <rect x={L+296} y={B+34} width={12} height={10} fill="#DDD4C4" stroke="#8A7A62" strokeWidth={1.2} rx={2}/>
-        <text x={L+312} y={B+43} fill={T.faint} fontSize={11} fontFamily="DM Sans">Fixture</text>
-      </>}
     </svg>
   );
 }
@@ -3031,13 +2352,10 @@ function DesignSidebar({onAdd,onAddCorner,wall,setWall,room,setRoom,cabs,activeW
   const corners=availableCorners(activeWalls);
   const usedCorners=cabs.filter(c=>c.corner).map(c=>c.corner);
   const freeCorners=corners.filter(c=>!usedCorners.includes(c));
-  const bath=isBath(room);
-  const mine=typesFor(bath?"bath":"kitchen");
-  const fixtureTypes=mine.filter(([,d])=>d.fixture);
-  const regularTypes=mine.filter(([t,d])=>!d.fixture&&!d.isCorner&&t!=="island");
-  const cornerTypes=bath?[]:mine.filter(([,d])=>d.isCorner);
-  const sideBtn=(onClick,label,sub,key)=>(
-    <button key={key} onClick={onClick} style={{display:"block",width:"100%",padding:"10px 12px",marginBottom:6,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"rgba(255,255,255,0.8)",textAlign:"left",cursor:"pointer",transition:"all 0.15s"}}
+  const regularTypes=Object.entries(DEFS).filter(([t])=>!t.startsWith("corner")&&!t.startsWith("blind")&&t!=="island");
+  const cornerTypes=Object.entries(DEFS).filter(([t])=>t.startsWith("corner")||t.startsWith("blind"));
+  const sideBtn=(onClick,label,sub)=>(
+    <button onClick={onClick} style={{display:"block",width:"100%",padding:"10px 12px",marginBottom:6,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"rgba(255,255,255,0.8)",textAlign:"left",cursor:"pointer",transition:"all 0.15s"}}
       onMouseEnter={e=>{e.currentTarget.style.background="rgba(193,122,58,0.25)";e.currentTarget.style.borderColor=T.amber;}}
       onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.borderColor="rgba(255,255,255,0.1)";}}>
       <div style={{fontSize:14,fontWeight:600,marginBottom:2}}>{label}</div>
@@ -3071,17 +2389,11 @@ function DesignSidebar({onAdd,onAddCorner,wall,setWall,room,setRoom,cabs,activeW
         ))}
       </div>
       <div style={{padding:"16px",flex:1}}>
-        {bath&&fixtureTypes.length>0&&(
-          <div style={{marginBottom:14,paddingBottom:12,borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
-            <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:10}}>Fixtures — {wall.toLowerCase()} wall</div>
-            {fixtureTypes.map(([type,def])=>sideBtn(()=>onAdd(type),"+ "+def.label,def.w+'"W × '+def.h+'"H × '+def.d+'"D',type))}
-          </div>
-        )}
-        <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:10}}>{bath?"Cabinetry":"Add to "+wall.toLowerCase()}</div>
-        {regularTypes.map(([type,def])=>sideBtn(()=>onAdd(type),"+ "+def.label,def.w+'"W × '+def.h+'"H × '+def.d+'"D',type))}
+        <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:10}}>Add to {wall.toLowerCase()}</div>
+        {regularTypes.map(([type,def])=>sideBtn(()=>onAdd(type),"+ "+def.label,def.w+'"W × '+def.h+'"H × '+def.d+'"D'))}
 
         {/* Corner cabinets */}
-        {!bath&&corners.length>0&&(
+        {corners.length>0&&(
           <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.08)"}}>
             <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:8}}>Corner cabinets</div>
             {freeCorners.length===0
@@ -3105,12 +2417,10 @@ function DesignSidebar({onAdd,onAddCorner,wall,setWall,room,setRoom,cabs,activeW
         )}
 
         {/* Island */}
-        {!bath&&(
-          <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.08)"}}>
-            <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:8}}>Freestanding</div>
-            {sideBtn(()=>onAdd("island"),"+ Island",DEFS.island.w+'"W × '+DEFS.island.h+'"H × '+DEFS.island.d+'"D',"island")}
-          </div>
-        )}
+        <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+          <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:8}}>Freestanding</div>
+          {sideBtn(()=>onAdd("island"),"+ Island",DEFS.island.w+'"W × '+DEFS.island.h+'"H × '+DEFS.island.d+'"D')}
+        </div>
       </div>
     </div>
   );
@@ -3126,8 +2436,7 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk}){
   );
   const useStd=c.useStandard!==false;
   const stdW=STD_W[c.type]||[],stdH=STD_H[c.type]||[],stdD=STD_D[c.type]||[];
-  const isBase=DEFS[c.type]?.row==="lower"&&!isTallCab(c);
-  const isFx=!!DEFS[c.type]?.fixture;
+  const isBase=DEFS[c.type]?.row==="lower";
   const hWarning=isBase&&(c.h<30||c.h>36)?(c.h<30?"Below standard — may be too low":"Above standard — countertop unusually high"):null;
   const IS={...IB,padding:"7px 10px"};
   const DF=({label,k,stdList})=>{
@@ -3189,64 +2498,42 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk}){
         {hWarning&&<div style={{marginTop:8,padding:"8px 10px",background:"#FFF8E8",border:"1px solid #F0D080",borderRadius:6,fontSize:12,color:"#8B6020"}}>⚠ {hWarning}<br/><span style={{color:T.faint}}>Standard base: 34.5" (36" with top)</span></div>}
       </div>
 
-      {isFx&&(
-        <div style={{marginBottom:14,padding:"10px 12px",background:T.amberLight,border:`1px solid #F0D0A0`,borderRadius:8,fontSize:12,color:T.text,lineHeight:1.6}}>
-          Plumbing fixture — supplied, not built. Price is a flat allowance; type the supplier's actual number below and it flows through to the quote.
-        </div>
-      )}
       {/* Bulk apply scope */}
-      {!isFx&&<div style={{marginBottom:14,padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+      <div style={{marginBottom:14,padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
         <Lbl style={{marginBottom:6}}>Apply changes to</Lbl>
         <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
           {[["all","All"],["lower","Lowers"],["upper","Uppers"],["island","Island"]].map(([k,l])=>(
             <button key={k} onClick={()=>setApplyScope(k)} style={{padding:"4px 10px",fontSize:11,fontWeight:600,borderRadius:5,border:`1.5px solid ${applyScope===k?T.amber:T.border}`,background:applyScope===k?T.amberLight:"#fff",color:applyScope===k?T.amber:T.muted,cursor:"pointer"}}>{l}</button>
           ))}
         </div>
-      </div>}
+      </div>
 
       {/* Material with apply button */}
-      {!isFx&&<div style={{marginBottom:12}}>
+      <div style={{marginBottom:12}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><Lbl style={{marginBottom:0}}>Material</Lbl><ApplyBtn propKey="material" label="material"/></div>
         <select value={c.material} onChange={e=>update(c.id,{material:e.target.value})} style={{...IS,width:"100%",marginTop:6}}>{Object.entries(MATS).map(([v,m])=><option key={v} value={v}>{m.label}</option>)}</select>
-      </div>}
+      </div>
 
       {/* Door style with apply button */}
-      {!isFx&&<div style={{marginBottom:12}}>
+      <div style={{marginBottom:12}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><Lbl style={{marginBottom:0}}>Door style</Lbl><ApplyBtn propKey="doorStyle" label="door style"/></div>
         <select value={c.doorStyle} onChange={e=>update(c.id,{doorStyle:e.target.value})} style={{...IS,width:"100%",marginTop:6}}>{DOOR_STYLES.map(s=><option key={s} value={s}>{s}</option>)}</select>
-      </div>}
+      </div>
 
-      {/* Finish */}
-      {isFx?(
-        <div style={{marginBottom:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-            <Lbl style={{marginBottom:0}}>Trim finish</Lbl>
-            <button onClick={()=>{
-                const ids=(cabs||[]).filter(x=>DEFS[x.type]?.fixture&&x.id!==c.id).map(x=>x.id);
-                if(updateBulk&&ids.length) updateBulk(ids,{finishKey:c.finishKey||"chrome",finish:finishLabel(c.finishKey||"chrome")});
-              }} title="Apply this finish to every fixture in the room"
-              style={{padding:"3px 8px",fontSize:10,fontWeight:600,background:T.amberLight,border:`1px solid #E8C888`,borderRadius:4,color:T.amber,cursor:"pointer",whiteSpace:"nowrap"}}>
-              All fixtures →
-            </button>
-          </div>
-          <FinishPicker value={c.finishKey||"chrome"} onChange={k=>update(c.id,{finishKey:k,finish:finishLabel(k)})} compact/>
-          <p style={{fontSize:11,color:T.faint,marginTop:4}}>Faucet, shower head and handle finish. Shows on the elevation and prints on the quote.</p>
-        </div>
-      ):(
-        <div style={{marginBottom:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><Lbl style={{marginBottom:0}}>Finish / color</Lbl><ApplyBtn propKey="finish" label="finish"/></div>
-          <input type="text" value={c.finish} onChange={e=>update(c.id,{finish:e.target.value})} style={{...IS,width:"100%",marginTop:6}}/>
-        </div>
-      )}
+      {/* Finish with apply button */}
+      <div style={{marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><Lbl style={{marginBottom:0}}>Finish / color</Lbl><ApplyBtn propKey="finish" label="finish"/></div>
+        <input type="text" value={c.finish} onChange={e=>update(c.id,{finish:e.target.value})} style={{...IS,width:"100%",marginTop:6}}/>
+      </div>
 
       {/* Front layout (doors/drawers) with apply button */}
-      {!isFx&&<div style={{marginBottom:12}}>
+      <div style={{marginBottom:12}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><Lbl style={{marginBottom:0}}>Front layout</Lbl><ApplyBtn propKey="frontLayout" label="front layout"/></div>
         <select value={c.frontLayout||"doors"} onChange={e=>update(c.id,{frontLayout:e.target.value})} style={{...IS,width:"100%",marginTop:6}}>
           {FRONT_LAYOUTS.map(fl=><option key={fl.key} value={fl.key}>{fl.label}</option>)}
         </select>
         <p style={{fontSize:11,color:T.faint,marginTop:4}}>{FRONT_LAYOUTS.find(fl=>fl.key===(c.frontLayout||"doors"))?.desc}</p>
-      </div>}
+      </div>
 
       {/* Wall / Corner */}
       {DEFS[c.type]?.isCorner?(
@@ -3279,7 +2566,7 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk}){
       <div style={{marginBottom:16}}>
         <Lbl>Notes</Lbl>
         <input type="text" value={c.notes} onChange={e=>update(c.id,{notes:e.target.value})} style={{...IS,width:"100%"}} placeholder="e.g. sink base, range, fridge"/>
-        {!isFx&&<p style={{fontSize:11,color:T.faint,marginTop:4}}>Type "sink", "range", "cooktop", "wall oven", or "fridge" to show appliance visuals</p>}
+        <p style={{fontSize:11,color:T.faint,marginTop:4}}>Type "sink", "range", "cooktop", "wall oven", or "fridge" to show appliance visuals</p>
       </div>
       <div style={{padding:16,background:T.amberLight,border:`1px solid #F0D0A0`,borderRadius:9}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
@@ -3291,7 +2578,7 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk}){
           <input type="number" value={c.priceOverride!=null?c.priceOverride:getEstPrice(c)} onChange={e=>update(c.id,{priceOverride:parseFloat(e.target.value)||0})} style={{fontSize:28,fontWeight:700,fontFamily:"'Lora',serif",color:T.oak,background:"transparent",border:"none",borderBottom:`2px dashed ${T.amber}`,outline:"none",width:120,padding:"0 0 2px"}}/>
         </div>
         {c.priceOverride!=null&&<div style={{fontSize:11,color:T.faint,marginTop:4}}>Estimated: ${getEstPrice(c).toLocaleString()}</div>}
-        <div style={{fontSize:12,color:T.muted,marginTop:6,lineHeight:1.7}}>{c.w}"W × {c.h}"H × {c.d}"D<br/>{isFx?(c.finish||"Finish TBD"):(MATS[c.material]?.label+" · "+c.doorStyle+" · "+(FRONT_LAYOUTS.find(fl=>fl.key===(c.frontLayout||"doors"))?.label||""))}</div>
+        <div style={{fontSize:12,color:T.muted,marginTop:6,lineHeight:1.7}}>{c.w}"W × {c.h}"H × {c.d}"D<br/>{MATS[c.material]?.label} · {c.doorStyle} · {FRONT_LAYOUTS.find(fl=>fl.key===(c.frontLayout||"doors"))?.label}</div>
       </div>
     </div>
   );
@@ -3307,11 +2594,10 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
   const numbered=cabs.map((c,i)=>({...c,num:i+1}));
 
   // Group by type for schedule
-  const bases=numbered.filter(c=>DEFS[c.type]?.row==="lower"&&c.type!=="island"&&c.type!=="tall"&&c.type!=="corner_pantry"&&c.type!=="linen");
+  const bases=numbered.filter(c=>DEFS[c.type]?.row==="lower"&&c.type!=="island");
   const uppers=numbered.filter(c=>DEFS[c.type]?.row==="upper");
-  const talls=numbered.filter(c=>c.type==="tall"||c.type==="corner_pantry"||c.type==="linen");
+  const talls=numbered.filter(c=>c.type==="tall"||c.type==="corner_pantry");
   const islands=numbered.filter(c=>c.type==="island");
-  const fixtures=numbered.filter(c=>DEFS[c.type]?.fixture);
 
   // Title block
   const TitleBlock=({title,pageNum,totalPages})=>(
@@ -3397,11 +2683,10 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
           const hinge=HINGE_TYPES.find(h=>h.key===hw.hinges);
           const slide=SLIDE_TYPES.find(s=>s.key===hw.slides);
           return<>
-            <div>Pulls: {pull?.label||"TBD"} × {q.pulls} — {finishLabel(hw.finish||"brushed_nickel")}</div>
+            <div>Pulls: {pull?.label||"TBD"} × {q.pulls}</div>
             <div>Hinges: {hinge?.label||"TBD"} × {q.hinges}</div>
             <div>Slides: {slide?.label||"TBD"} × {q.slides} pairs</div>
             <div>All holes to be drilled before delivery</div>
-            {isBath(room)&&<div style={{marginTop:4,fontWeight:600}}>Plumbing trim finish: {finishLabel(room.fixtureFinish||"chrome")}</div>}
           </>;
         })()}
       </div>
@@ -3515,7 +2800,6 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
 
     const lowerCabs=wallCabs.filter(c=>DEFS[c.type]?.row==="lower");
     const upperCabs=wallCabs.filter(c=>DEFS[c.type]?.row==="upper");
-    const fixCabs=wallCabs.filter(c=>DEFS[c.type]?.fixture);
 
     return(
       <svg width={SW} height={SH} style={{display:"block",background:"#fff",border:"1px solid #CCC"}}>
@@ -3549,7 +2833,7 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
 
         {/* Countertop line — only base/vanity, not tall or corner pantry */}
         {(()=>{
-          const ctCabs=lowerCabs.filter(hasCounter);
+          const ctCabs=lowerCabs.filter(c=>c.type!=="tall"&&c.type!=="corner_pantry");
           if(!ctCabs.length) return null;
           const minX=Math.min(...ctCabs.map(c=>c.x));
           const maxX=Math.max(...ctCabs.map(c=>c.x+c.w));
@@ -3566,15 +2850,6 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
           const fl=c.frontLayout||"doors";
           const nDoors=cw>=27*S?2:1;
 
-          if(DEFS[c.type]?.fixture){
-            return(
-              <g key={c.id}>
-                <FixtureElev type={c.type} x={cx} y={cy} w={cw} h={ch} hIn={c.h} mono label={false}/>
-                <text x={cx+cw/2} y={FY+16} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily="'DM Sans',sans-serif" fill="#1E1208"># {c.num}</text>
-                <text x={cx+cw/2} y={FY+28} textAnchor="middle" fontSize={8} fill="#666">{cabCode(c)}</text>
-              </g>
-            );
-          }
           return(
             <g key={c.id}>
               {/* Box */}
@@ -3630,10 +2905,6 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
         {/* Individual lower cab widths */}
         {lowerCabs.map(c=>(
           <HDim key={`lw${c.id}`} x1={PL+c.x*S} x2={PL+(c.x+c.w)*S} y={FY+40} label={toFrac(c.w)}/>
-        ))}
-        {/* Fixture widths sit on the same dimension line as the lowers */}
-        {fixCabs.map(c=>(
-          <HDim key={`fw${c.id}`} x1={PL+c.x*S} x2={PL+(c.x+c.w)*S} y={FY+40} label={toFrac(c.w)}/>
         ))}
         {/* Individual upper cab widths */}
         {upperCabs.map(c=>(
@@ -3719,11 +2990,10 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
           {/* Left: Schedule tables */}
           <div>
-            <ScheduleTable title={isBath(room)?"VANITY CABINETS":"BASE CABINETS"} items={bases}/>
-            <ScheduleTable title={isBath(room)?"WALL CABINETS":"UPPER CABINETS"} items={uppers}/>
-            <ScheduleTable title={isBath(room)?"TALL / LINEN":"TALL CABINETS"} items={talls}/>
+            <ScheduleTable title="BASE CABINETS" items={bases}/>
+            <ScheduleTable title="UPPER CABINETS" items={uppers}/>
+            <ScheduleTable title="TALL CABINETS" items={talls}/>
             {islands.length>0&&<ScheduleTable title="ISLAND" items={islands}/>}
-            {fixtures.length>0&&<ScheduleTable title="PLUMBING FIXTURES (SUPPLIED)" items={fixtures}/>}
           </div>
           {/* Right: Spec block */}
           <div>
@@ -4176,7 +3446,7 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
           );
         })}
         {/* Countertops — only base/vanity/island, not tall or corner pantry */}
-        {wallCabs.filter(hasCounter).map(c=>(
+        {wallCabs.filter(c=>DEFS[c.type]?.row==="lower"&&c.type!=="tall"&&c.type!=="corner_pantry").map(c=>(
           <rect key={`ct${c.id}`} x={PL+c.x*ES2-1} y={FY-c.h*ES2-2.2*ES2} width={c.w*ES2+2} height={2.2*ES2} fill={ct} rx={1}/>
         ))}
         {/* Cabinets */}
@@ -4186,9 +3456,6 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
           const tkH=isLower?TOEKICK*ES2:0, bodyH=ch-tkH, nD=cw>=27*ES2?2:1, dw=cw/nD;
           const isSink=isLower&&notesHas(c,"sink"), isRange=isLower&&(notesHas(c,"range")||notesHas(c,"stove")), isFridge=isLower&&(notesHas(c,"fridge")||notesHas(c,"refrigerator"));
           const isWallOven=notesHas(c,"wall oven")||notesHas(c,"walloven");
-          if(DEFS[c.type]?.fixture){
-            return <g key={c.id}><FixtureElev type={c.type} x={cx} y={cyy} w={cw} h={ch} hIn={c.h} label={false} finishKey={c.finishKey||room?.fixtureFinish}/></g>;
-          }
           return(
             <g key={c.id}>
               <rect x={cx} y={cyy} width={cw} height={bodyH} fill={isFridge?"#D4C8B8":(isRange||isWallOven)?"#C8A888":bf} stroke={de} strokeWidth={0.8} rx={1}/>
@@ -4297,7 +3564,7 @@ function PresentationView({cabs,room,project,activeWalls,companyProfile}){
               {companyProfile?.logoDataUrl&&<img src={companyProfile.logoDataUrl} alt="" style={{height:44,objectFit:"contain"}}/>}
               <div>
                 <div style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.oak}}>
-                  {isBath(room)?"Bathroom":"Kitchen"} Design Proposal
+                  Kitchen Design Proposal
                 </div>
                 {companyProfile?.companyName&&<div style={{fontSize:13,color:T.muted}}>{companyProfile.companyName}{companyProfile?.phone?" · "+companyProfile.phone:""}{companyProfile?.email?" · "+companyProfile.email:""}</div>}
               </div>
@@ -4513,13 +3780,8 @@ function saveProjectList(list){localStorage.setItem(PROJECTS_KEY,JSON.stringify(
 function loadCurrentSession(){try{return JSON.parse(localStorage.getItem(CURRENT_KEY))||null;}catch{return null;}}
 function saveCurrentSession(data){localStorage.setItem(CURRENT_KEY,JSON.stringify(data));}
 
-const BATH_PROJECT_NAME="New Bathroom Project";
 const DEFAULT_PROJECT={name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:"",installRate:25,cabSupplier:""};
-const DEFAULT_ROOM={roomType:"kitchen",fixtureFinish:"chrome",width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",trim:{...DEFAULT_TRIM},hardware:{...DEFAULT_HARDWARE},countertop:{...DEFAULT_COUNTERTOP}};
-// Bathrooms: smaller box, all four walls in play, no crown by default
-const DEFAULT_BATH_ROOM={roomType:"bath",fixtureFinish:"chrome",width:96,depth:72,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",
-  trim:{...DEFAULT_TRIM,crown:{...DEFAULT_TRIM.crown,enabled:false},lightRail:{...DEFAULT_TRIM.lightRail,enabled:false}},
-  hardware:{...DEFAULT_HARDWARE},countertop:{...DEFAULT_COUNTERTOP,material:"quartz",backsplashH:4}};
+const DEFAULT_ROOM={width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",trim:{...DEFAULT_TRIM},hardware:{...DEFAULT_HARDWARE},countertop:{...DEFAULT_COUNTERTOP}};
 const DEFAULT_WALLS=["South","West"];
 
 function packSession(projectId,project,room,activeWalls,cabs,wall,view){
@@ -4733,36 +3995,6 @@ export default function App(){
   const [companyProfile,setCompanyProfile]=useState(()=>loadProfile());
   const [showProfile,setShowProfile]=useState(()=>!loadProfile());
   const [showProjects,setShowProjects]=useState(false);
-  const [switchTo,setSwitchTo]=useState(null); // pending room-type switch
-
-  const roomType=room.roomType||"kitchen";
-  const bath=roomType==="bath";
-
-  // Switch between Kitchen and Bathroom mode.
-  // fresh = clear the canvas and load default dimensions for the new room type.
-  const applyRoomType=(rt,fresh)=>{
-    if(fresh){
-      const base=rt==="bath"?{...DEFAULT_BATH_ROOM}:{...DEFAULT_ROOM};
-      setCabs([]);setSel(null);
-      setRoom({...base,roomType:rt});
-      setActiveWalls(rt==="bath"?[...ALL_WALLS]:[...DEFAULT_WALLS]);
-      setWall("South");
-      setProject(pr=>{
-        const untouched=pr.name===DEFAULT_PROJECT.name||pr.name===BATH_PROJECT_NAME;
-        return untouched?{...pr,name:rt==="bath"?BATH_PROJECT_NAME:DEFAULT_PROJECT.name}:pr;
-      });
-    } else {
-      setRoom(r=>({...r,roomType:rt}));
-      if(rt==="bath") setActiveWalls([...ALL_WALLS]);
-    }
-    setView("setup");
-    setSwitchTo(null);
-  };
-  const requestRoomType=rt=>{
-    if(rt===roomType) return;
-    if(cabs.length>0){setSwitchTo(rt);return;}
-    applyRoomType(rt,true);
-  };
 
   // Auto-save current session on every meaningful state change
   useEffect(()=>{
@@ -4804,15 +4036,7 @@ export default function App(){
 
   const ww=wallWidth(wall,room);
 
-  const addCab=type=>{
-    const c=makeCab(type,type==="island"?"Island":wall,cabs,ww);
-    // New fixtures inherit the project's plumbing trim finish
-    if(DEFS[type]?.fixture){
-      const fk=room.fixtureFinish||"chrome";
-      c.finishKey=fk;c.finish=finishLabel(fk);
-    }
-    setCabs(p=>[...p,c]);setSel(c.id);
-  };
+  const addCab=type=>{const c=makeCab(type,type==="island"?"Island":wall,cabs,ww);setCabs(p=>[...p,c]);setSel(c.id);};
   const addCornerCab=(type,corner)=>{const c=makeCornerCab(type,corner,room);setCabs(p=>[...p,c]);setSel(c.id);};
   const applyRecs=rcs=>{
     // Layout engine already produces complete cabinet objects with IDs
@@ -4905,18 +4129,6 @@ export default function App(){
           <span style={{fontSize:14,color:T.muted}}>{project.name}</span>
           <button onClick={()=>setShowProfile(true)} title="Company settings" style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:T.faint,padding:4,lineHeight:1,marginLeft:4}}>⚙</button>
           <button onClick={()=>setShowProjects(true)} title="Projects" style={{padding:"4px 10px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",color:T.oak,display:"flex",alignItems:"center",gap:4}}>📁 Projects</button>
-          {/* Kitchen / Bathroom mode switch */}
-          <div style={{display:"flex",gap:2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:7,padding:2,marginLeft:2}}>
-            {ROOM_TYPES.map(rt=>{
-              const on=roomType===rt.key;
-              return(
-                <button key={rt.key} onClick={()=>requestRoomType(rt.key)} title={"Switch to "+rt.label+" mode"}
-                  style={{padding:"4px 11px",background:on?T.amber:"transparent",border:"none",borderRadius:5,fontSize:12,fontWeight:600,cursor:"pointer",color:on?"#fff":T.muted,display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
-                  <span style={{fontSize:13}}>{rt.icon}</span>{rt.label}
-                </button>
-              );
-            })}
-          </div>
         </div>
         <nav style={{display:"flex",gap:2,height:"100%",alignItems:"stretch"}}>
           {STEPS.map(s=>{
@@ -4955,7 +4167,7 @@ export default function App(){
                 <button onClick={zoomIn}  style={{width:28,height:28,background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.muted}}>+</button>
               </div>
               <div style={{display:"flex",alignItems:"center",fontSize:13,color:T.faint}}>
-                {cabs.length} {bath?"item":"cabinet"}{cabs.length!==1?"s":""}
+                {cabs.length} cabinet{cabs.length!==1?"s":""}
                 {(room.features||[]).length>0&&<span style={{marginLeft:8,color:T.winStroke}}>{(room.features||[]).length} feature{(room.features||[]).length!==1?"s":""}</span>}
                 {cabs.length>0&&<span style={{marginLeft:8,color:T.amber,fontWeight:600}}>${total.toLocaleString()}</span>}
               </div>
@@ -4978,23 +4190,6 @@ export default function App(){
       </div>
       {/* Company profile modal */}
       {showProfile&&<CompanyProfileModal profile={companyProfile} setProfile={setCompanyProfile} onClose={()=>setShowProfile(false)} isFirstTime={!companyProfile}/>}
-      {/* Room type switch confirmation */}
-      {switchTo&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(30,18,8,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}} onClick={()=>setSwitchTo(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:28,maxWidth:460,boxShadow:"0 20px 60px rgba(44,31,14,0.3)"}}>
-            <h3 style={{fontFamily:"'Lora',serif",fontSize:20,color:T.oak,marginBottom:10}}>Switch to {switchTo==="bath"?"Bathroom":"Kitchen"}?</h3>
-            <p style={{fontSize:14,color:T.muted,lineHeight:1.7,marginBottom:20}}>
-              This project has {cabs.length} item{cabs.length!==1?"s":""} on the canvas. <strong style={{color:T.text}}>Start fresh</strong> clears them and loads default {switchTo==="bath"?"bathroom":"kitchen"} dimensions.
-              {" "}<strong style={{color:T.text}}>Keep what I have</strong> only changes the mode, so you can add {switchTo==="bath"?"bathroom fixtures to an existing drawing":"kitchen cabinets to an existing drawing"}.
-            </p>
-            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-              <Btn onClick={()=>applyRoomType(switchTo,true)}>Start fresh</Btn>
-              <Btn variant="outline" onClick={()=>applyRoomType(switchTo,false)}>Keep what I have</Btn>
-              <Btn variant="ghost" onClick={()=>setSwitchTo(null)}>Cancel</Btn>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Projects modal */}
       {showProjects&&<ProjectsModal onClose={()=>setShowProjects(false)} onLoad={loadProject} onNew={newProject} currentId={projectId} project={project} room={room} activeWalls={activeWalls} cabs={cabs} wall={wall} view={view}/>}
     </div>
