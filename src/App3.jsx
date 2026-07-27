@@ -16,8 +16,6 @@ const MODEL="claude-sonnet-4-20250514", ES=4.5, TOEKICK=4.5, UPPER_BTM=54;
 const ALL_WALLS=["South","North","East","West"];
 const ROOM_TYPES=[{key:"kitchen",label:"Kitchen",icon:"\ud83c\udf73"},{key:"bath",label:"Bathroom",icon:"\ud83d\udec1"}];
 const isBath=room=>(room?.roomType||"kitchen")==="bath";
-// "existing" = fixtures are already roughed in and measured; "new" = free design
-const isAsBuilt=room=>isBath(room)&&(room?.layoutMode||"existing")==="existing";
 const roomWord=room=>isBath(room)?"bathroom":"kitchen";
 const STD_W={base:[9,12,15,18,21,24,27,30,33,36,42,48],upper:[9,12,15,18,21,24,27,30,33,36,42,48],tall:[18,24,30,36],island:[36,42,48,54,60,72,84,96],vanity:[18,21,24,27,30,33,36,42,48],corner_base:[33,36,39,42],blind_base:[36,39,42,45,48],corner_upper:[24,27,30],blind_upper:[27,30,33,36],corner_pantry:[24,30,36],
   vanity_sink:[24,30,36,42,48,60,72],vanity_drawer:[12,15,18,21,24],linen:[12,15,18,21,24],
@@ -465,64 +463,6 @@ const isTallCab=c=>["tall","corner_pantry","linen"].includes(c.type);
 const wallWidth=(wall,room)=>{
   if(room.wallLengths?.[wall]) return room.wallLengths[wall];
   return["East","West"].includes(wall)?room.depth:room.width;
-};
-
-
-/* ─── FIXTURE LOCATION ─────────────────────────────────────────────────────
-   Existing bathrooms get measured, not designed. Nobody records a toilet as
-   "18 inches from the left edge of the bowl" — they record the centre of the
-   closet flange, the centre of the sink drain, or the drain end of the tub.
-   So every fixture carries a reference point plus a distance from a named
-   corner, and these helpers convert that to the left-edge x the canvas draws
-   with. Dragging writes back through xToDist so the typed number stays true. */
-const REF_POINTS=[
-  {key:"flange",  label:"Flange centre", hint:"Centre of the closet flange"},
-  {key:"drain_c", label:"Drain centre",  hint:"Centre of the drain / trap"},
-  {key:"drain_end",label:"Drain end",    hint:"Drain end of the tub, plus how far in the drain sits"},
-  {key:"centre",  label:"Centre of unit",hint:"Midpoint of the fixture"},
-  {key:"left",    label:"Left edge",     hint:"Left-hand edge as you face the wall"},
-  {key:"right",   label:"Right edge",    hint:"Right-hand edge as you face the wall"},
-];
-const DEFAULT_REF={toilet:"flange",bathsink:"drain_c",vanity_sink:"drain_c",vanity:"drain_c",
-  bathtub:"drain_end",tubshower:"drain_end",shower:"drain_c"};
-const refPointsFor=type=>{
-  const d=DEFAULT_REF[type];
-  const allow=d==="drain_end"?["drain_end","left","right","centre"]
-    :d==="flange"?["flange","left","right","centre"]
-    :d==="drain_c"?["drain_c","left","right","centre"]
-    :["left","right","centre"];
-  return REF_POINTS.filter(r=>allow.includes(r.key));
-};
-const defaultLoc=type=>({point:DEFAULT_REF[type]||"left",dist:0,from:"left",
-  drainEnd:"left",drainInset:15,...(type==="toilet"?{roughIn:12}:{})});
-// Distance from the fixture's left edge to its reference point
-const refOffset=c=>{
-  const L=c.loc||{},pt=L.point||DEFAULT_REF[c.type]||"left";
-  if(pt==="left") return 0;
-  if(pt==="right") return c.w;
-  if(pt==="drain_end"){const i=L.drainInset??15;return L.drainEnd==="right"?c.w-i:i;}
-  return L.drainOffset!=null?L.drainOffset:c.w/2; // flange, drain centre, unit centre
-};
-const snapIn=v=>Math.round(v*16)/16; // nearest 1/16", matching what toFrac prints
-// measured distance → left-edge x
-const locToX=(c,wallW)=>{
-  const L=c.loc||{};
-  const fromLeft=L.from==="right"?wallW-(L.dist||0):(L.dist||0);
-  return snapIn(fromLeft-refOffset(c));
-};
-// left-edge x → measured distance, snapped to 1/16"
-const xToDist=(c,wallW,x)=>{
-  const L=c.loc||{};
-  const fromLeft=x+refOffset(c);
-  return snapIn(L.from==="right"?wallW-fromLeft:fromLeft);
-};
-// Keep x and the measured distance in step after a drag
-const syncLoc=(c,x,room)=>c.loc?{...c,x,loc:{...c.loc,dist:xToDist(c,wallWidth(c.wall,room),x)}}:{...c,x};
-// Human-readable callout, e.g. 'Flange centre 18" from left corner'
-const locLabel=c=>{
-  if(!c.loc) return "";
-  const pt=REF_POINTS.find(r=>r.key===c.loc.point);
-  return (pt?pt.label:"Left edge")+" "+toFrac(c.loc.dist||0)+'" from '+(c.loc.from==="right"?"right":"left")+" corner";
 };
 
 /* ─── LAYOUT ENGINE ───────────────────────────────────────────────────────── */
@@ -1051,9 +991,7 @@ const LE={
 
     for(const p of placed){
       const isFx=!!DEFS[p.type]?.fixture;
-      const loc=defaultLoc(p.type);
-      loc.dist=xToDist({type:p.type,w:p.w,loc},wallW,p.x);
-      cabs.push({loc,type:p.type,wall:wallName,w:p.w,h:p.h,d:p.d,x:p.x,
+      cabs.push({type:p.type,wall:wallName,w:p.w,h:p.h,d:p.d,x:p.x,
         material:isFx?"painted_mdf":style.material,
         doorStyle:isFx?"Shaker":style.doorStyle,
         finish:isFx?finishLabel(fxFinish):style.finish,
@@ -1094,59 +1032,6 @@ const LE={
     }
     allCabs=allCabs.map(c=>({id:uid(),...c,ix:c.ix||0,iy:c.iy||0,useStandard:true}));
     return{cabinets:allCabs,placed:allPlaced};
-  },
-
-  /* Storage-only pass. The fixtures are already where the plumber put them —
-     we place cabinetry into whatever wall is left over and touch nothing else. */
-  buildBathStorage(plan,room,activeWalls,existing){
-    const style={material:plan.material||"painted_mdf",doorStyle:plan.doorStyle||"Shaker",finish:plan.finish||"White"};
-    const added=[];
-    const floorOn=w=>existing.filter(c=>c.wall===w&&DEFS[c.type]?.row!=="upper");
-    const lav=existing.find(c=>["vanity_sink","vanity","bathsink"].includes(c.type));
-    const toilet=existing.find(c=>c.type==="toilet");
-
-    const placeInGap=(spec,type,h,d,notes,fl)=>{
-      if(!spec||!spec.wall||!activeWalls.includes(spec.wall)) return null;
-      const ww=wallWidth(spec.wall,room);
-      const occ=floorOn(spec.wall).map(c=>({x:c.x,w:c.w}));
-      const segs=LE.freeSegs(ww,occ).sort((a,b)=>(b.endX-b.x)-(a.endX-a.x));
-      const want=spec.width||18;
-      const seg=segs.find(sg=>sg.endX-sg.x>=want)||segs[0];
-      if(!seg) return null;
-      const w=Math.min(want,seg.endX-seg.x);
-      if(w<MIN_CAB) return null;
-      const cab={type,wall:spec.wall,w,h,d,x:seg.x,material:style.material,doorStyle:style.doorStyle,
-        finish:style.finish,notes,frontLayout:fl||"doors"};
-      cab.loc=defaultLoc(type);
-      cab.loc.dist=xToDist(cab,ww,cab.x);
-      added.push(cab);
-      return cab;
-    };
-
-    const newVanity=!lav&&plan.vanity?placeInGap(plan.vanity,"vanity_sink",32,21,"Vanity sink base",
-      (plan.vanity.width||36)>=48?"3-drawer-over-door":"doors"):null;
-    if(plan.linen) placeInGap(plan.linen,"linen",84,21,"Linen tower");
-
-    // Wall cabinets ride above what's already there
-    const winObs=w=>(room.features||[]).filter(f=>f.wall===w).map(f=>({x:Math.max(0,f.x-2),w:f.width+4}));
-    const addUpper=(host,type,uw,uh,ud,note)=>{
-      if(!host) return;
-      const ww=wallWidth(host.wall,room);
-      const x=clamp(Math.round(host.x+host.w/2-uw/2),0,Math.max(0,ww-uw));
-      if(LE.overlaps(x,uw,winObs(host.wall))) return;
-      added.push({type,wall:host.wall,w:uw,h:uh,d:ud,x,material:style.material,
-        doorStyle:style.doorStyle,finish:style.finish,notes:note,frontLayout:"doors"});
-    };
-    const lavHost=lav||newVanity;
-    if(lavHost&&plan.medicineCabinet!==false){
-      const opts=[36,30,24,18];
-      const mw=opts.find(o=>o<=Math.max(18,lavHost.w-4))||18;
-      addUpper(lavHost,"medicine",mw,30,6,"Mirrored medicine cabinet");
-    }
-    if(toilet&&plan.overToiletCabinet) addUpper(toilet,"otc",24,30,10,"Over-toilet storage");
-
-    const withIds=added.map(c=>({id:uid(),...c,ix:0,iy:0,useStandard:true}));
-    return{cabinets:[...existing,...withIds],added:withIds};
   }
 };
 
@@ -1635,7 +1520,7 @@ function FeatureEditor({features,setFeatures,activeWalls,room}){
 }
 
 /* ─── APPLIANCE EDITOR ─────────────────────────────────────────────────────── */
-function ApplianceEditor({appliances,setAppliances,activeWalls,room,types,title,hint,emptyText,showPos,onPlace}){
+function ApplianceEditor({appliances,setAppliances,activeWalls,room,types,title,hint,emptyText}){
   const TYPES=types||APPLIANCE_TYPES;
   const add=type=>{
     const def=TYPES.find(a=>a.key===type);
@@ -1692,57 +1577,11 @@ function ApplianceEditor({appliances,setAppliances,activeWalls,room,types,title,
                   </select>
                 </div>
                 <button onClick={()=>del(a.id)} style={{background:"none",border:"none",color:T.red,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1}}>×</button>
-                {showPos&&(
-                  <div style={{gridColumn:"1 / -1",display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginTop:8,paddingTop:8,borderTop:`1px dashed ${T.border}`}}>
-                    <div style={{flex:"2 1 150px"}}>
-                      <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Measure to</div>
-                      <select value={a.point||DEFAULT_REF[a.type]||"left"} onChange={e=>upd(a.id,{point:e.target.value})} style={{...IS,width:"100%"}}>
-                        {refPointsFor(a.type).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
-                      </select>
-                    </div>
-                    {(a.point||DEFAULT_REF[a.type])==="drain_end"&&(<>
-                      <div style={{flex:"1 1 80px"}}>
-                        <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Drain end</div>
-                        <select value={a.drainEnd||"left"} onChange={e=>upd(a.id,{drainEnd:e.target.value})} style={{...IS,width:"100%"}}>
-                          <option value="left">Left</option><option value="right">Right</option>
-                        </select>
-                      </div>
-                      <div style={{flex:"0 1 70px"}}>
-                        <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Inset "</div>
-                        <input type="number" step="0.125" value={a.drainInset??15} onChange={e=>upd(a.id,{drainInset:parseFloat(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center"}}/>
-                      </div>
-                    </>)}
-                    <div style={{flex:"1 1 110px"}}>
-                      <div style={{fontSize:10,color:T.faint,marginBottom:2}}>From</div>
-                      <select value={a.from||"left"} onChange={e=>upd(a.id,{from:e.target.value})} style={{...IS,width:"100%"}}>
-                        <option value="left">Left corner</option><option value="right">Right corner</option>
-                      </select>
-                    </div>
-                    <div style={{flex:"0 1 80px"}}>
-                      <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Distance "</div>
-                      <input type="number" step="0.125" value={a.dist??0} onChange={e=>upd(a.id,{dist:parseFloat(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center",fontWeight:700}}/>
-                    </div>
-                    {a.type==="toilet"&&(
-                      <div style={{flex:"0 1 90px"}}>
-                        <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Rough-in "</div>
-                        <select value={a.roughIn??12} onChange={e=>upd(a.id,{roughIn:parseFloat(e.target.value)})} style={{...IS,width:"100%"}}>
-                          {[10,12,14].map(v=><option key={v} value={v}>{v}"</option>)}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
       }
-      {onPlace&&appliances.length>0&&(
-        <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
-          <Btn onClick={onPlace}>Place these fixtures on the drawing →</Btn>
-          <p style={{fontSize:11,color:T.faint,marginTop:6}}>Drops each fixture at the measurement above. Re-run it any time you correct a number — your cabinetry stays put.</p>
-        </div>
-      )}
       <p style={{fontSize:12,color:T.faint,marginTop:10}}>{hint||"Appliance dimensions help the AI place cabinets with proper clearance."}</p>
     </Card>
   );
@@ -1803,42 +1642,16 @@ function UtilitiesEditor({utilities,setUtilities,activeWalls,room}){
   );
 }
 
-/* ─── SHARED LAYOUT PIECES ────────────────────────────────────────────────
-   These must live at module scope. Declared inside a parent component they'd
-   get a fresh identity on every render, and React would unmount and rebuild
-   the entire subtree — losing scroll position and input focus each keystroke. */
-const Toggle=({label,desc,value,onChange})=>(
-  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
-    <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>{label}</div><div style={{fontSize:12,color:T.faint}}>{desc}</div></div>
-    <button onClick={()=>onChange(!value)} style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:value?T.amber:T.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
-      <span style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",left:value?22:2,display:"block"}}/>
-    </button>
-  </div>
-);
-const TrimRow=({label,desc,enabled,onToggle,children})=>(
-  <div style={{padding:"10px 14px",background:enabled?T.amberLight:T.bg,border:`1px solid ${enabled?T.amber:T.border}`,borderRadius:8,transition:"all 0.2s"}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:children&&enabled?10:0}}>
-      <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>{label}</div><div style={{fontSize:12,color:T.faint}}>{desc}</div></div>
-      <button onClick={onToggle} style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:enabled?T.amber:T.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
-        <span style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",left:enabled?22:2,display:"block"}}/>
-      </button>
-    </div>
-    {enabled&&children}
-  </div>
-);
-const Section=({num,title,desc,children})=>(
-  <div style={{marginBottom:28}}>
-    <div style={{display:"flex",gap:12,alignItems:"baseline",marginBottom:6}}>
-      <span style={{fontSize:12,fontWeight:700,color:T.amber,background:T.amberLight,padding:"2px 8px",borderRadius:4}}>{num}</span>
-      <h3 style={{fontSize:18,fontWeight:600,color:T.ink,fontFamily:"'Lora',serif"}}>{title}</h3>
-    </div>
-    {desc&&<p style={{fontSize:13,color:T.muted,marginBottom:16,marginLeft:42,lineHeight:1.6}}>{desc}</p>}
-    <div style={{marginLeft:0}}>{children}</div>
-  </div>
-);
-
 /* ─── ROOM OPTIONS CARD ───────────────────────────────────────────────────── */
 function RoomOptionsCard({room,setRoom}){
+  const Toggle=({label,desc,value,onChange})=>(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
+      <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>{label}</div><div style={{fontSize:12,color:T.faint}}>{desc}</div></div>
+      <button onClick={()=>onChange(!value)} style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:value?T.amber:T.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
+        <span style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",left:value?22:2,display:"block"}}/>
+      </button>
+    </div>
+  );
   const IS={...IB,padding:"7px 10px"};
   return(
     <Card>
@@ -1884,6 +1697,17 @@ function TrimAccessoriesCard({room,setRoom}){
     });
   };
   const IS={...IB,padding:"7px 10px"};
+  const TrimRow=({label,desc,enabled,onToggle,children})=>(
+    <div style={{padding:"10px 14px",background:enabled?T.amberLight:T.bg,border:`1px solid ${enabled?T.amber:T.border}`,borderRadius:8,transition:"all 0.2s"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:children&&enabled?10:0}}>
+        <div><div style={{fontSize:14,fontWeight:500,color:T.ink}}>{label}</div><div style={{fontSize:12,color:T.faint}}>{desc}</div></div>
+        <button onClick={onToggle} style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:enabled?T.amber:T.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
+          <span style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",left:enabled?22:2,display:"block"}}/>
+        </button>
+      </div>
+      {enabled&&children}
+    </div>
+  );
   return(
     <Card>
       <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:6}}>Trim & accessories</h3>
@@ -2098,7 +1922,7 @@ function CountertopCard({room,setRoom}){
 }
 
 /* ─── STEP 1 — ROOM SETUP ─────────────────────────────────────────────────── */
-function RoomSetupView({room,setRoom,activeWalls,setActiveWalls,onNext,onPlaceFixtures}){
+function RoomSetupView({room,setRoom,activeWalls,setActiveWalls,onNext}){
   const [blueprint,setBlueprint]=useState(null);
   const [photo,setPhoto]=useState(null);
   const [analysis,setAnalysis]=useState(null);
@@ -2155,6 +1979,17 @@ CRITICAL RULES:
   };
 
   // Section header component with step number and description
+  const Section=({num,title,desc,children})=>(
+    <div style={{marginBottom:28}}>
+      <div style={{display:"flex",gap:12,alignItems:"baseline",marginBottom:6}}>
+        <span style={{fontSize:12,fontWeight:700,color:T.amber,background:T.amberLight,padding:"2px 8px",borderRadius:4}}>{num}</span>
+        <h3 style={{fontSize:18,fontWeight:600,color:T.ink,fontFamily:"'Lora',serif"}}>{title}</h3>
+      </div>
+      {desc&&<p style={{fontSize:13,color:T.muted,marginBottom:16,marginLeft:42,lineHeight:1.6}}>{desc}</p>}
+      <div style={{marginLeft:0}}>{children}</div>
+    </div>
+  );
+
   return(
     <div style={{flex:1,overflowY:"auto",padding:"36px 48px",maxWidth:920}}>
       <div className="fade-up">
@@ -2275,26 +2110,6 @@ CRITICAL RULES:
         </Card>
         </Section>
 
-        {bath&&(
-          <Card style={{marginBottom:20}}>
-            <h3 style={{fontSize:16,fontWeight:600,color:T.ink,marginBottom:6}}>Is this an existing bathroom?</h3>
-            <p style={{fontSize:14,color:T.muted,marginBottom:14}}>This decides whether the AI is allowed to move fixtures or has to work around them.</p>
-            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-              {[["existing","Existing — already roughed in","Fixtures stay exactly where you measured them. AI only suggests cabinetry."],
-                ["new","New rough-in","AI places the toilet, tub and vanity as well."]].map(([k,label,desc])=>{
-                const on=(room.layoutMode||"existing")===k;
-                return(
-                  <button key={k} onClick={()=>setRoom(r=>({...r,layoutMode:k}))}
-                    style={{flex:"1 1 220px",textAlign:"left",padding:"12px 14px",borderRadius:8,cursor:"pointer",
-                      background:on?T.amberLight:T.bg,border:`2px solid ${on?T.amber:T.border}`}}>
-                    <div style={{fontSize:14,fontWeight:600,color:on?T.amber:T.ink,marginBottom:3}}>{on?"✓ ":""}{label}</div>
-                    <div style={{fontSize:12,color:T.muted,lineHeight:1.5}}>{desc}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </Card>
-        )}
         <Section num="C" title={bath?"Windows, doors & fixtures":"Windows, doors & appliances"} desc={bath?"Mark windows and doors so fixtures don't block them. Add the toilet, tub, shower, vanity and sink with real dimensions — the layout engine places to these numbers, not to guesses.":"Mark windows and doors so cabinets don't block them. Add appliances with dimensions so the AI knows where to leave gaps. Appliances can be placed on walls or the island."}>
         <div style={{marginBottom:20}}>
           <FeatureEditor
@@ -2310,8 +2125,6 @@ CRITICAL RULES:
             activeWalls={activeWalls} room={room}
             types={bath?BATH_FIXTURE_TYPES:APPLIANCE_TYPES}
             title={bath?"Fixtures":"Appliances"}
-            showPos={isAsBuilt(room)}
-            onPlace={isAsBuilt(room)?onPlaceFixtures:null}
             emptyText={bath?"No fixtures added yet. Add them here with real sizes and the layout engine will place to those numbers.":undefined}
             hint={bath?"Fixture dimensions drive placement and the NKBA clearance checks. A 60\" tub and a 54\" tub give very different layouts.":undefined}/>
         </div>
@@ -2427,74 +2240,11 @@ function RoomFootprint({room,activeWalls}){
 }
 
 /* ─── STEP 2 — RECOMMENDATIONS ────────────────────────────────────────────── */
-function RecommendationsView({room,activeWalls,onApply,onSkip,cabs}){
+function RecommendationsView({room,activeWalls,onApply,onSkip}){
   const [recs,setRecs]=useState(null),[loading,setLoading]=useState(false),[err,setErr]=useState(null);
   const bath=isBath(room);
   const generate=async()=>{
     setLoading(true);setErr(null);
-
-    /* ── EXISTING BATHROOM: fixtures are fixed, plan storage around them ── */
-    if(bath&&isAsBuilt(room)){
-      try{
-        const placedFx=(cabs||[]).filter(c=>DEFS[c.type]?.fixture||["vanity_sink","vanity","bathsink"].includes(c.type));
-        if(!placedFx.length){
-          setErr("No fixtures on the drawing yet. Enter their measurements in Room Setup and hit \"Place these fixtures\" first.");
-          setLoading(false);return;
-        }
-        const fxList=placedFx.map(c=>(DEFS[c.type]?.label||c.type)+" on "+c.wall+" wall, "+c.w+'"W x '+c.d+'"D, '+locLabel(c)).join("; ");
-        const wallDims=activeWalls.map(w=>{
-          const occ=(cabs||[]).filter(x=>x.wall===w&&DEFS[x.type]?.row!=="upper").map(x=>({x:x.x,w:x.w}));
-          const free=LE.freeSegs(wallWidth(w,room),occ).map(sg=>(sg.endX-sg.x)+'" gap at '+sg.x+'"').join(", ")||"fully occupied";
-          return w+": "+wallWidth(w,room)+'" long — free: '+free;
-        }).join("\n");
-        const featList=(room.features||[]).map(f=>f.type+" on "+f.wall+" wall at "+f.x+'" from left, '+f.width+'" wide').join("; ")||"none";
-
-        const txt=await callClaude([{role:"user",content:
-`You are an NKBA-certified bathroom designer looking at an EXISTING bathroom that is already roughed in.
-
-ROOM: ${room.width}" x ${room.depth}" x ${room.height}" ceiling
-EXISTING FIXTURES (already installed — you may NOT move these): ${fxList}
-WALLS AND REMAINING FREE SPACE:
-${wallDims}
-WINDOWS/DOORS: ${featList}
-
-YOUR JOB: recommend storage and finishes only. Do not relocate any fixture. Work with the gaps listed above.
-
-RULES:
-- Only suggest a vanity if there isn't already a lavatory in the fixture list.
-- Only suggest a linen tower if a wall has 18"+ of genuinely free space.
-- A medicine cabinet goes above the lavatory unless a window is in the way.
-- If a clearance in the existing layout is poor, say so in warnings — the client may accept it, but they should be told.
-- Keep finishes simple and neutral unless the room suggests otherwise.
-
-Return ONLY valid JSON — no markdown:
-{
-  "layout": "Existing three-piece — storage added",
-  "material": "painted_mdf",
-  "doorStyle": "Shaker",
-  "finish": "White",
-  "vanity": {"wall": "${activeWalls[0]||"South"}", "width": 36},
-  "linen": {"wall": "${activeWalls[1]||activeWalls[0]||"East"}", "width": 18},
-  "medicineCabinet": true,
-  "overToiletCabinet": false,
-  "explanation": "2-3 sentences on what you added and why.",
-  "tips": ["Tip 1.", "Tip 2."],
-  "warnings": ["Anything about the existing layout worth flagging."]
-}
-Set "vanity" or "linen" to null if there is no room or no need for it.`
-        }],1200);
-
-        const plan=parseJSON(txt);
-        const built=LE.buildBathStorage(plan,room,activeWalls,cabs||[]);
-        const checklist=buildBathChecklist(room,activeWalls,built.cabinets);
-        setRecs({
-          layout:plan.layout,explanation:plan.explanation,workTriangle:null,
-          bestPractices:checklist,cabinets:built.cabinets,
-          tips:plan.tips||[],warnings:plan.warnings||[],plan,bath:true,asBuilt:true,addedCount:built.added.length
-        });
-      }catch(e){console.error(e);setErr("Could not generate — please try again.");}
-      setLoading(false);return;
-    }
 
     /* ── BATHROOM PATH ── */
     if(bath){
@@ -2678,8 +2428,7 @@ Return ONLY valid JSON — no markdown:
   return(
     <div style={{flex:1,overflowY:"auto",padding:"36px 48px",maxWidth:920}}>
       <div className="fade-up">
-        <h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:6}}>{isAsBuilt(room)?"Storage for your existing bathroom":("AI "+(bath?"bathroom":"kitchen")+" layout")}</h1>
-        {isAsBuilt(room)&&<p style={{fontSize:14,color:T.muted,marginBottom:10,background:T.amberLight,border:`1px solid #F0D0A0`,borderRadius:8,padding:"10px 14px"}}>As-built mode: your measured fixtures stay exactly where they are. The AI only proposes cabinetry for the space that's left, and checks the existing layout against NKBA clearances.</p>}
+        <h1 style={{fontFamily:"'Lora',serif",fontSize:28,fontWeight:600,color:T.ink,marginBottom:6}}>AI {bath?"bathroom":"kitchen"} layout</h1>
         <p style={{fontSize:15,color:T.muted,marginBottom:8}}>Based on your {(room.width/12).toFixed(1)}' × {(room.depth/12).toFixed(1)}' space and NKBA best practices.</p>
         <div style={{display:"flex",gap:8,marginBottom:24,flexWrap:"wrap"}}>
           {activeWalls.map(w=><Badge key={w} color="amber">{w} wall</Badge>)}
@@ -2763,7 +2512,7 @@ Return ONLY valid JSON — no markdown:
               </div>
             </Card>
             <Card>
-              <Lbl style={{marginBottom:12}}>{recs.asBuilt?("Existing fixtures + "+(recs.addedCount||0)+" added"):(bath?"Suggested fixture & cabinet plan":"Suggested cabinet plan")} — {recs.cabinets?.length} units</Lbl>
+              <Lbl style={{marginBottom:12}}>{bath?"Suggested fixture & cabinet plan":"Suggested cabinet plan"} — {recs.cabinets?.length} units</Lbl>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:8}}>
                 {recs.cabinets?.map((c,i)=>(
                   <div key={i} style={{padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:7}}>
@@ -2789,9 +2538,9 @@ Return ONLY valid JSON — no markdown:
 }
 
 /* ─── ELEVATION CANVAS ────────────────────────────────────────────────────── */
-function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilities,room,snap=true}){
+function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilities,room}){
   const drag=useRef(null);
-  const SNAP=snap?3:0; // magnetic snap, off when placing to measured dimensions
+  const SNAP=3; // snap within 3 inches
   const PL=60,PR=30,PT=40,PB=60;
   const SW=PL+wallW*ES+PR,SH=PT+wallH*ES+PB,FY=PT+wallH*ES;
   const getCabY=c=>DEFS[c.type]?.row==="upper"?FY-(UPPER_BTM+c.h)*ES:FY-c.h*ES;
@@ -2816,17 +2565,13 @@ function ElevationCanvas({cabs,wall,wallW,wallH,sel,onSel,onMove,features,utilit
     let nx=clamp(drag.current.cx0+(e.clientX-drag.current.mx0)/ES,0,wallW-c.w);
     const row=DEFS[c.type]?.row;
     const grp=r=>r==="upper"?"upper":"floor"; // fixtures snap against base cabs too
-    const others=SNAP>0?wallCabs.filter(o=>o.id!==c.id&&grp(DEFS[o.type]?.row)===grp(row)):[];
+    const others=wallCabs.filter(o=>o.id!==c.id&&grp(DEFS[o.type]?.row)===grp(row));
     for(const o of others){
       if(Math.abs(nx-(o.x+o.w))<SNAP) nx=o.x+o.w;
       if(Math.abs((nx+c.w)-o.x)<SNAP) nx=o.x-c.w;
     }
-    if(SNAP>0){
-      if(nx<SNAP) nx=0;
-      if(wallW-nx-c.w<SNAP) nx=wallW-c.w;
-    } else {
-      nx=snapIn(nx); // free placement still lands on a usable fraction
-    }
+    if(nx<SNAP) nx=0;
+    if(wallW-nx-c.w<SNAP) nx=wallW-c.w;
     onMove(drag.current.id,nx);
   };
   const onPU=()=>{drag.current=null;};
@@ -3371,26 +3116,9 @@ function DesignSidebar({onAdd,onAddCorner,wall,setWall,room,setRoom,cabs,activeW
   );
 }
 
-/* Dimension entry. At module scope so typing a width doesn't remount the input. */
-function DimField({label,k,stdList,c,update,useStd,IS}){
-  const curVal=c[k];
-  const opts=[...stdList];
-  if(useStd&&opts.length>0&&!opts.includes(curVal)){opts.push(curVal);opts.sort((a,b)=>a-b);}
-  return(
-    <div>
-      <div style={{fontSize:11,color:T.faint,marginBottom:4,textAlign:"center"}}>{label}</div>
-      {useStd&&opts.length>0
-        ?<select value={curVal} onChange={e=>update(c.id,{[k]:parseFloat(e.target.value)})} style={{...IS,padding:"7px 4px",textAlign:"center"}}>{opts.map(v=><option key={v} value={v}>{v}"{!stdList.includes(v)?" *":""}</option>)}</select>
-        :<input type="number" step="0.125" value={curVal} onChange={e=>update(c.id,{[k]:parseFloat(e.target.value)||0})} style={{...IS,padding:"7px 4px",textAlign:"center"}}/>
-      }
-    </div>
-  );
-}
-
 /* ─── PROPERTIES PANEL ────────────────────────────────────────────────────── */
-function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk,room}){
+function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk}){
   const [applyScope,setApplyScope]=useState("all");
-  const wallW=c&&room?wallWidth(c.wall,room):0;
   if(!c)return(
     <div style={{width:280,background:T.surface,borderLeft:`1px solid ${T.border}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{textAlign:"center",padding:24,color:T.faint}}><div style={{fontSize:28,marginBottom:8}}>👆</div><div style={{fontSize:14,color:T.muted}}>Select a cabinet<br/>to edit its properties</div></div>
@@ -3402,6 +3130,24 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk,room}){
   const isFx=!!DEFS[c.type]?.fixture;
   const hWarning=isBase&&(c.h<30||c.h>36)?(c.h<30?"Below standard — may be too low":"Above standard — countertop unusually high"):null;
   const IS={...IB,padding:"7px 10px"};
+  const DF=({label,k,stdList})=>{
+    const curVal=c[k];
+    const opts=[...stdList];
+    // If current value isn't in standard list, add it so dropdown shows correctly
+    if(useStd&&opts.length>0&&!opts.includes(curVal)){
+      opts.push(curVal);
+      opts.sort((a,b)=>a-b);
+    }
+    return(
+    <div>
+      <div style={{fontSize:11,color:T.faint,marginBottom:4,textAlign:"center"}}>{label}</div>
+      {useStd&&opts.length>0
+        ?<select value={curVal} onChange={e=>update(c.id,{[k]:parseFloat(e.target.value)})} style={{...IS,padding:"7px 4px",textAlign:"center"}}>{opts.map(v=><option key={v} value={v}>{v}"{!stdList.includes(v)?" *":""}</option>)}</select>
+        :<input type="number" value={curVal} onChange={e=>update(c.id,{[k]:parseFloat(e.target.value)||0})} style={{...IS,padding:"7px 4px",textAlign:"center"}}/>
+      }
+    </div>
+    );
+  };
 
   // Bulk apply helper
   const bulkApply=(props)=>{
@@ -3438,9 +3184,7 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk,room}){
       <div style={{marginBottom:14}}>
         <Lbl>Dimensions</Lbl>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-          <DimField label='W"' k="w" stdList={stdW} c={c} update={update} useStd={useStd} IS={IS}/>
-          <DimField label='H"' k="h" stdList={stdH} c={c} update={update} useStd={useStd} IS={IS}/>
-          <DimField label='D"' k="d" stdList={stdD} c={c} update={update} useStd={useStd} IS={IS}/>
+          <DF label='W"' k="w" stdList={stdW}/><DF label='H"' k="h" stdList={stdH}/><DF label='D"' k="d" stdList={stdD}/>
         </div>
         {hWarning&&<div style={{marginTop:8,padding:"8px 10px",background:"#FFF8E8",border:"1px solid #F0D080",borderRadius:6,fontSize:12,color:"#8B6020"}}>⚠ {hWarning}<br/><span style={{color:T.faint}}>Standard base: 34.5" (36" with top)</span></div>}
       </div>
@@ -3448,73 +3192,6 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk,room}){
       {isFx&&(
         <div style={{marginBottom:14,padding:"10px 12px",background:T.amberLight,border:`1px solid #F0D0A0`,borderRadius:8,fontSize:12,color:T.text,lineHeight:1.6}}>
           Plumbing fixture — supplied, not built. Price is a flat allowance; type the supplier's actual number below and it flows through to the quote.
-        </div>
-      )}
-
-      {/* ── EXACT POSITION ── */}
-      {!c.corner&&c.wall!=="Island"&&(
-        <div style={{marginBottom:14,padding:"12px 14px",background:"#fff",border:`1.5px solid ${T.amber}`,borderRadius:8}}>
-          <Lbl style={{marginBottom:8}}>Position on {c.wall} wall</Lbl>
-          {c.loc?(
-            <>
-              <div style={{marginBottom:8}}>
-                <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Measure to</div>
-                <select value={c.loc.point} onChange={e=>update(c.id,{loc:{...c.loc,point:e.target.value}})} style={{...IS,width:"100%"}}>
-                  {refPointsFor(c.type).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
-                </select>
-                <p style={{fontSize:10,color:T.faint,marginTop:3,lineHeight:1.45}}>{REF_POINTS.find(r=>r.key===c.loc.point)?.hint}</p>
-              </div>
-              {c.loc.point==="drain_end"&&(
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                  <div>
-                    <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Drain end</div>
-                    <select value={c.loc.drainEnd||"left"} onChange={e=>update(c.id,{loc:{...c.loc,drainEnd:e.target.value}})} style={{...IS,width:"100%"}}>
-                      <option value="left">Left</option><option value="right">Right</option>
-                    </select>
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Drain inset "</div>
-                    <input type="number" step="0.125" value={c.loc.drainInset??15} onChange={e=>update(c.id,{loc:{...c.loc,drainInset:parseFloat(e.target.value)||0}})} style={{...IS,width:"100%",textAlign:"center"}}/>
-                  </div>
-                </div>
-              )}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <div>
-                  <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Measured from</div>
-                  <select value={c.loc.from||"left"} onChange={e=>update(c.id,{loc:{...c.loc,from:e.target.value}})} style={{...IS,width:"100%"}}>
-                    <option value="left">Left corner</option><option value="right">Right corner</option>
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Distance "</div>
-                  <input type="number" step="0.125" value={c.loc.dist??0} onChange={e=>update(c.id,{loc:{...c.loc,dist:parseFloat(e.target.value)||0}})}
-                    style={{...IS,width:"100%",textAlign:"center",fontWeight:700,fontSize:16}}/>
-                </div>
-              </div>
-              {c.type==="toilet"&&(
-                <div style={{marginTop:8}}>
-                  <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Rough-in — finished wall to flange centre</div>
-                  <select value={c.loc.roughIn??12} onChange={e=>update(c.id,{loc:{...c.loc,roughIn:parseFloat(e.target.value)}})} style={{...IS,width:"100%"}}>
-                    {[10,12,14].map(v=><option key={v} value={v}>{v}"</option>)}
-                  </select>
-                </div>
-              )}
-              <div style={{marginTop:9,paddingTop:8,borderTop:`1px solid ${T.border}`,fontSize:11,color:T.muted,lineHeight:1.6}}>
-                Occupies <strong style={{color:T.ink}}>{toFrac(c.x)}"</strong> to <strong style={{color:T.ink}}>{toFrac(c.x+c.w)}"</strong> from the left corner.
-                {(c.x<-0.01||c.x+c.w>wallW+0.01)&&<span style={{color:T.red,fontWeight:600}}><br/>⚠ Runs past the {wallW}" wall.</span>}
-              </div>
-            </>
-          ):(
-            <div>
-              <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Left edge, from left corner "</div>
-              <input type="number" step="0.125" value={c.x??0} onChange={e=>update(c.id,{x:parseFloat(e.target.value)||0})} style={{...IS,width:"100%",textAlign:"center",fontWeight:700,fontSize:16}}/>
-              <button onClick={()=>{const l=defaultLoc(c.type);l.dist=xToDist({...c,loc:l},wallW,c.x);update(c.id,{loc:l});}}
-                style={{marginTop:7,width:"100%",padding:"6px 8px",fontSize:11,fontWeight:600,background:T.amberLight,border:`1px solid #E8C888`,borderRadius:5,color:T.amber,cursor:"pointer"}}>
-                Measure from a plumbing reference instead
-              </button>
-            </div>
-          )}
-          <p style={{fontSize:10,color:T.faint,marginTop:7,lineHeight:1.5}}>Arrow keys nudge 1" · hold Shift for 1/8"</p>
         </div>
       )}
       {/* Bulk apply scope */}
@@ -3806,7 +3483,7 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
     if(!wallCabs.length&&!wallFeats.length) return null;
 
     const S=3.8; // scale
-    const PL=70,PR=60,PT=50,PB=104; // extra room for the fixture location chain
+    const PL=70,PR=60,PT=50,PB=80;
     const SW=PL+ww*S+PR,SH=PT+wh*S+PB;
     const FY=PT+wh*S; // floor Y
 
@@ -3962,21 +3639,8 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
         {upperCabs.map(c=>(
           <HDim key={`uw${c.id}`} x1={PL+c.x*S} x2={PL+(c.x+c.w)*S} y={PT-14} label={toFrac(c.w)}/>
         ))}
-        {/* Fixture location chain — measured to the plumbing reference point */}
-        {wallCabs.filter(c=>c.loc&&DEFS[c.type]?.fixture).map(c=>{
-          const refAbs=c.x+refOffset(c);
-          const fromRight=c.loc.from==="right";
-          const rx=PL+refAbs*S;
-          return(
-            <g key={`loc${c.id}`}>
-              {/* Centreline mark through the fixture */}
-              <line x1={rx} y1={getCabY(c)-6} x2={rx} y2={FY+52} stroke="#B0342A" strokeWidth={0.7} strokeDasharray="9,3,2,3"/>
-              <HDim x1={fromRight?rx:PL} x2={fromRight?PL+ww*S:rx} y={FY+62} label={toFrac(c.loc.dist||0)}/>
-            </g>
-          );
-        })}
         {/* Overall wall dimension */}
-        <HDim x1={PL} x2={PL+ww*S} y={FY+84} label={toFrac(ww)}/>
+        <HDim x1={PL} x2={PL+ww*S} y={FY+60} label={toFrac(ww)}/>
 
         {/* Vertical dimensions on right side */}
         {lowerCabs.length>0&&(
@@ -4060,38 +3724,6 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
             <ScheduleTable title={isBath(room)?"TALL / LINEN":"TALL CABINETS"} items={talls}/>
             {islands.length>0&&<ScheduleTable title="ISLAND" items={islands}/>}
             {fixtures.length>0&&<ScheduleTable title="PLUMBING FIXTURES (SUPPLIED)" items={fixtures}/>}
-            {fixtures.some(c=>c.loc)&&(
-              <div style={{marginBottom:16}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,border:"1px solid #333"}}>
-                  <thead>
-                    <tr style={{background:"#E8E0D5"}}>
-                      <th colSpan={5} style={{padding:"4px 8px",textAlign:"left",fontWeight:700,fontSize:12,borderBottom:"1px solid #333"}}>FIXTURE LOCATIONS (AS MEASURED)</th>
-                    </tr>
-                    <tr style={{background:"#F4EFE7"}}>
-                      {["NO","FIXTURE","WALL","MEASURED TO","DIMENSION"].map(h=>(
-                        <th key={h} style={{padding:"3px 8px",textAlign:"left",fontWeight:600,fontSize:10,borderBottom:"1px solid #999",borderRight:"1px solid #CCC"}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fixtures.filter(c=>c.loc).map(c=>(
-                      <tr key={c.id} style={{borderBottom:"1px solid #DDD"}}>
-                        <td style={{padding:"3px 8px",fontWeight:700,borderRight:"1px solid #CCC",width:36}}>{c.num}</td>
-                        <td style={{padding:"3px 8px",borderRight:"1px solid #CCC"}}>{DEFS[c.type]?.label}</td>
-                        <td style={{padding:"3px 8px",borderRight:"1px solid #CCC"}}>{c.wall}</td>
-                        <td style={{padding:"3px 8px",borderRight:"1px solid #CCC"}}>
-                          {REF_POINTS.find(r=>r.key===c.loc.point)?.label||"Left edge"}
-                          {c.loc.point==="drain_end"?` (${c.loc.drainEnd||"left"} end, ${toFrac(c.loc.drainInset??15)}" in)`:""}
-                          {c.type==="toilet"?` · ${toFrac(c.loc.roughIn??12)}" rough-in`:""}
-                        </td>
-                        <td style={{padding:"3px 8px",fontWeight:700}}>{toFrac(c.loc.dist||0)}" from {c.loc.from==="right"?"right":"left"} corner</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{fontSize:10,color:"#666",marginTop:3}}>Dimensions taken to plumbing centrelines from finished wall surfaces. Verify on site before ordering.</div>
-              </div>
-            )}
           </div>
           {/* Right: Spec block */}
           <div>
@@ -4885,7 +4517,7 @@ const BATH_PROJECT_NAME="New Bathroom Project";
 const DEFAULT_PROJECT={name:"New Kitchen Project",client:"",address:"",city:"",province:"",postal:"",phone:"",email:"",installRate:25,cabSupplier:""};
 const DEFAULT_ROOM={roomType:"kitchen",fixtureFinish:"chrome",width:144,depth:120,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",trim:{...DEFAULT_TRIM},hardware:{...DEFAULT_HARDWARE},countertop:{...DEFAULT_COUNTERTOP}};
 // Bathrooms: smaller box, all four walls in play, no crown by default
-const DEFAULT_BATH_ROOM={roomType:"bath",fixtureFinish:"chrome",layoutMode:"existing",width:96,depth:72,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",
+const DEFAULT_BATH_ROOM={roomType:"bath",fixtureFinish:"chrome",width:96,depth:72,height:96,features:[],appliances:[],utilities:[],toCeiling:false,crownMoulding:false,bulkheadHeight:0,boxMaterial:"birch_ply",
   trim:{...DEFAULT_TRIM,crown:{...DEFAULT_TRIM.crown,enabled:false},lightRail:{...DEFAULT_TRIM.lightRail,enabled:false}},
   hardware:{...DEFAULT_HARDWARE},countertop:{...DEFAULT_COUNTERTOP,material:"quartz",backsplashH:4}};
 const DEFAULT_WALLS=["South","West"];
@@ -5102,7 +4734,6 @@ export default function App(){
   const [showProfile,setShowProfile]=useState(()=>!loadProfile());
   const [showProjects,setShowProjects]=useState(false);
   const [switchTo,setSwitchTo]=useState(null); // pending room-type switch
-  const [snapOn,setSnapOn]=useState(true);
 
   const roomType=room.roomType||"kitchen";
   const bath=roomType==="bath";
@@ -5176,11 +4807,9 @@ export default function App(){
   const addCab=type=>{
     const c=makeCab(type,type==="island"?"Island":wall,cabs,ww);
     // New fixtures inherit the project's plumbing trim finish
-    if(DEFS[type]?.fixture||type==="vanity_sink"){
+    if(DEFS[type]?.fixture){
       const fk=room.fixtureFinish||"chrome";
-      if(DEFS[type]?.fixture){c.finishKey=fk;c.finish=finishLabel(fk);}
-      c.loc=defaultLoc(type);
-      c.loc.dist=xToDist(c,ww,c.x); // seed the measurement from where it landed
+      c.finishKey=fk;c.finish=finishLabel(fk);
     }
     setCabs(p=>[...p,c]);setSel(c.id);
   };
@@ -5201,70 +4830,15 @@ export default function App(){
       setCabs(nc);
     }
   };
-  // Build fixture objects straight from the measured entries in Room Setup
-  const placeFixtures=()=>{
-    const src=(room.appliances||[]).filter(a=>DEFS[a.type]?.fixture||a.type==="vanity");
-    const made=src.map(a=>{
-      const type=a.type==="vanity"?"vanity_sink":a.type;
-      const def=DEFS[type];
-      if(!def) return null;
-      const wall=activeWalls.includes(a.wall)?a.wall:(activeWalls[0]||"South");
-      const fk=room.fixtureFinish||"chrome";
-      const loc={point:a.point||DEFAULT_REF[type]||"left",dist:a.dist||0,from:a.from||"left",
-        drainEnd:a.drainEnd||"left",drainInset:a.drainInset??15,
-        ...(type==="toilet"?{roughIn:a.roughIn??12}:{})};
-      const c={id:uid(),type,w:a.w||def.w,h:a.h||def.h,d:a.d||def.d,x:0,ix:0,iy:0,wall,
-        material:"painted_mdf",doorStyle:"Shaker",
-        finish:def.fixture?finishLabel(fk):"White",...(def.fixture?{finishKey:fk}:{}),
-        notes:def.label,frontLayout:"doors",useStandard:true,loc};
-      c.x=locToX(c,wallWidth(wall,room));
-      return c;
-    }).filter(Boolean);
-    if(!made.length) return;
-    // Replace previously placed fixtures, leave cabinetry alone
-    setCabs(prev=>[...prev.filter(c=>!DEFS[c.type]?.fixture&&c.type!=="vanity_sink"),...made]);
-    setSel(null);
-    setView("design");
-  };
-  const updateCab=(id,ch)=>setCabs(p=>p.map(c=>{
-    if(c.id!==id) return c;
-    const nc={...c,...ch};
-    // A located fixture is driven by its measurement, not by x. Recompute rather
-    // than clamp — if the number puts it off the wall, the checklist should say so.
-    if(nc.loc&&(ch.loc!==undefined||ch.w!==undefined||ch.wall!==undefined)){
-      nc.x=locToX(nc,wallWidth(nc.wall,room));
-    }
-    return nc;
-  }));
+  const updateCab=(id,ch)=>setCabs(p=>p.map(c=>c.id===id?{...c,...ch}:c));
   const updateBulk=(ids,ch)=>setCabs(p=>p.map(c=>ids.includes(c.id)?{...c,...ch}:c));
   const deleteCab=id=>{setCabs(p=>p.filter(c=>c.id!==id));setSel(null);};
-  const moveCab=(id,x)=>setCabs(p=>p.map(c=>c.id===id?syncLoc(c,clamp(x,0,ww-c.w),room):c));
+  const moveCab=(id,x)=>setCabs(p=>p.map(c=>c.id===id?{...c,x:clamp(x,0,ww-c.w)}:c));
   const moveWallCab=(id,x)=>setCabs(p=>p.map(c=>{
     if(c.id!==id)return c;
     const cw=wallWidth(c.wall,room);
-    return syncLoc(c,clamp(x,0,cw-c.w),room);
+    return{...c,x:clamp(x,0,cw-c.w)};
   }));
-  // Nudge the selected item by an exact amount — arrow keys, 1" or 1/8" with Shift
-  const nudgeSel=delta=>{
-    if(!sel) return;
-    setCabs(p=>p.map(c=>{
-      if(c.id!==sel||c.corner) return c;
-      if(c.wall==="Island") return{...c,ix:(c.ix||0)+delta};
-      return syncLoc(c,snapIn((c.x||0)+delta),room);
-    }));
-  };
-  useEffect(()=>{
-    const onKey=e=>{
-      if(view!=="design"||!sel) return;
-      const t=e.target?.tagName;
-      if(t==="INPUT"||t==="SELECT"||t==="TEXTAREA") return; // don't hijack typing
-      if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight") return;
-      e.preventDefault();
-      nudgeSel((e.key==="ArrowLeft"?-1:1)*(e.shiftKey?0.125:1));
-    };
-    window.addEventListener("keydown",onKey);
-    return()=>window.removeEventListener("keydown",onKey);
-  });
   const moveIsland=(id,ix,iy)=>setCabs(p=>p.map(c=>c.id===id?{...c,ix,iy}:c));
   const packTight=(targetWall,row)=>{
     setCabs(prev=>{
@@ -5358,8 +4932,8 @@ export default function App(){
 
       {/* BODY */}
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-        {view==="setup"&&<RoomSetupView room={room} setRoom={setRoom} activeWalls={activeWalls} setActiveWalls={handleSetActiveWalls} onNext={()=>setView("recs")} onPlaceFixtures={placeFixtures}/>}
-        {view==="recs"&&<RecommendationsView room={room} activeWalls={activeWalls} cabs={cabs} onApply={rcs=>{applyRecs(rcs);setView("design");}} onSkip={()=>setView("design")}/>}
+        {view==="setup"&&<RoomSetupView room={room} setRoom={setRoom} activeWalls={activeWalls} setActiveWalls={handleSetActiveWalls} onNext={()=>setView("recs")}/>}
+        {view==="recs"&&<RecommendationsView room={room} activeWalls={activeWalls} onApply={rcs=>{applyRecs(rcs);setView("design");}} onSkip={()=>setView("design")}/>}
         {view==="design"&&<>
           <DesignSidebar onAdd={addCab} onAddCorner={addCornerCab} wall={wall} setWall={setWall} room={room} setRoom={setRoom} cabs={cabs} activeWalls={activeWalls}/>
           <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:T.bg}}>
@@ -5369,12 +4943,6 @@ export default function App(){
               ))}
               <div style={{flex:1}}/>
               {/* Snap tools */}
-              <div style={{display:"flex",alignItems:"center",marginRight:12}}>
-                <button onClick={()=>setSnapOn(v=>!v)} title={snapOn?"Cabinets snap to their neighbours while dragging":"Free placement — drag lands on the nearest 1/8\""}
-                  style={{height:28,padding:"0 10px",background:snapOn?T.amberLight:T.surface,border:`1px solid ${snapOn?T.amber:T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:snapOn?T.amber:T.muted,fontWeight:600,whiteSpace:"nowrap"}}>
-                  {snapOn?"🧲 Snap on":"Snap off"}
-                </button>
-              </div>
               {subView==="elevation"&&cabs.filter(c=>c.wall===wall).length>1&&(
                 <div style={{display:"flex",alignItems:"center",gap:4,marginRight:12,borderRight:`1px solid ${T.border}`,paddingRight:12}}>
                   <button onClick={()=>packTight(wall,"lower")} title="Pack lower cabinets tight from left" style={{height:28,padding:"0 10px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,cursor:"pointer",color:T.muted,fontWeight:600,whiteSpace:"nowrap"}}>Pack lower ◀▶</button>
@@ -5395,13 +4963,13 @@ export default function App(){
             <div style={{flex:1,overflow:"auto",padding:28}}>
               <div style={{transform:`scale(${zoom})`,transformOrigin:"top left",display:"inline-block"}}>
                 {subView==="elevation"
-                  ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]} utilities={room.utilities||[]} room={room} snap={snapOn}/>
+                  ?<ElevationCanvas cabs={cabs} wall={wall} wallW={ww} wallH={room.height} sel={sel} onSel={setSel} onMove={moveCab} features={room.features||[]} utilities={room.utilities||[]} room={room}/>
                   :<FloorPlanCanvas cabs={cabs} room={room} sel={sel} onSel={setSel} onMoveIsland={moveIsland} onMoveWallCab={moveWallCab}/>
                 }
               </div>
             </div>
           </div>
-          <PropertiesPanel c={selCab} update={updateCab} del={deleteCab} activeWalls={[...activeWalls,"Island"]} cabs={cabs} updateBulk={updateBulk} room={room}/>
+          <PropertiesPanel c={selCab} update={updateCab} del={deleteCab} activeWalls={[...activeWalls,"Island"]} cabs={cabs} updateBulk={updateBulk}/>
         </>}
         {view==="quote"&&<QuoteView cabs={cabs} setCabs={setCabs} project={project} setProject={setProject} room={room} activeWalls={activeWalls}/>}
         {view==="present"&&<PresentationView cabs={cabs} room={room} project={project} activeWalls={activeWalls} companyProfile={companyProfile}/>}
