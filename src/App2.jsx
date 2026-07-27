@@ -468,159 +468,6 @@ const wallWidth=(wall,room)=>{
 };
 
 
-
-/* ─── MOEN CATALOG ─────────────────────────────────────────────────────────
-   The models Postma actually carries, transcribed from the Moen spec deck
-   (7/16/2026). Finish is encoded in the SKU suffix: no suffix or CH = chrome,
-   BL = matte black, BN = brushed nickel, BZG = brushed gold, SRS = spot resist
-   stainless. Selecting a product here puts a real, orderable model number on
-   the shop drawings and order sheet instead of a generic finish name.
-   No prices are published in the deck, so every item takes an editable price
-   that defaults to 0 (reads as "TBD" until you enter one). */
-const MOEN_CATS={
-  kitchen_faucet:  {label:"Kitchen faucet",        attach:["base","island"]},
-  lav_faucet:      {label:"Lavatory faucet",       attach:["vanity_sink","vanity","bathsink"]},
-  shower_trim:     {label:"Shower trim",           attach:["shower"]},
-  tub_shower_trim: {label:"Tub & shower trim",     attach:["tubshower","bathtub"]},
-  shower_kit:      {label:"Shower kit",            attach:["shower","tubshower"]},
-  accessory:       {label:"Bath accessory",        attach:[]},
-  water_security:  {label:"Water security",        attach:[]},
-  safety:          {label:"Safety & accessibility",attach:[]},
-};
-const MOEN_CATALOG=[
-  // ── Kitchen ──
-  {key:"chateau_kf",   series:"Chateau", name:"Chateau Kitchen Faucet",          cat:"kitchen_faucet", tier:1,
-    variants:[{finish:"chrome",sku:"67425"}]},
-  {key:"chateau_pd",   series:"Chateau", name:"Chateau Pulldown Kitchen Faucet", cat:"kitchen_faucet", tier:2,
-    variants:[{finish:"chrome",sku:"7475"},{finish:"matte_black",sku:"7475BL"},{finish:"stainless",sku:"7475SRS"}]},
-  {key:"align_pd",     series:"Align",   name:"Align Pulldown Kitchen Faucet",   cat:"kitchen_faucet", tier:3,
-    variants:[{finish:"chrome",sku:"7565"},{finish:"matte_black",sku:"7565BL"}]},
-
-  // ── Bath: lavatory faucets ──
-  {key:"chateau_lav1", series:"Chateau", name:"Chateau 1-Handle Lav Faucet",     cat:"lav_faucet", tier:1,
-    variants:[{finish:"chrome",sku:"L640570"}]},
-  {key:"chateau_lav2", series:"Chateau", name:"Chateau 2-Handle Lav Faucet",     cat:"lav_faucet", tier:1,
-    variants:[{finish:"chrome",sku:"499525"}]},
-  {key:"bodhi_lav",    series:"Bodhi",   name:"Bodhi Lav Faucet",                cat:"lav_faucet", tier:2,
-    variants:[{finish:"chrome",sku:"4133"},{finish:"matte_black",sku:"4133BL"}]},
-  {key:"rizon_lav",    series:"Rizon",   name:"Rizon Lav Faucet",                cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"6908"},{finish:"matte_black",sku:"6908BL"}]},
-  {key:"iver_lav",     series:"Iver",    name:"Iver Lav Faucet",                 cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"6805"}],
-    verify:"Deck lists 64430BL/BN/BZG for Iver, but 64430 is the Jase lav. Confirm the Iver colour SKUs with Moen before ordering."},
-  {key:"iver_cs",      series:"Iver",    name:'Iver 4" Centerset Faucet',        cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"6815"},{finish:"matte_black",sku:"6815BL"},{finish:"brushed_nickel",sku:"6815BN"},{finish:"brushed_gold",sku:"6815BZG"}]},
-  {key:"jase_lav",     series:"Jase",    name:"Jase Lav Faucet",                 cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"64430"},{finish:"matte_black",sku:"64430BL"},{finish:"brushed_nickel",sku:"64430BN"},{finish:"brushed_gold",sku:"64430BZG"}]},
-  {key:"jase_cs",      series:"Jase",    name:'Jase 4" Centerset Faucet',        cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"64432"},{finish:"matte_black",sku:"64432BL"},{finish:"brushed_nickel",sku:"64432BN"},{finish:"brushed_gold",sku:"64432BZG"}]},
-  {key:"eva_cs",       series:"Eva",     name:'Eva 4" Centerset Faucet',         cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"6410"}]},
-  {key:"glyde_cs",     series:"Glyde",   name:'Glyde 4" Centerset Faucet',       cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"6172"}]},
-  {key:"dartmoor_cs",  series:"Dartmoor",name:'Dartmoor 4" Centerset Faucet',    cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"6802"}]},
-  {key:"belfield_cs",  series:"Belfield",name:'Belfield 4" Centerset Faucet',    cat:"lav_faucet",
-    variants:[{finish:"chrome",sku:"6401"}]},
-
-  // ── Bath: showering trim ──
-  {key:"chateau_ts",   series:"Chateau", name:"Chateau Tub & Shower Trim",       cat:"tub_shower_trim", tier:1,
-    variants:[{finish:"chrome",sku:"TL5183EP"}]},
-  {key:"chateau_sh",   series:"Chateau", name:"Chateau Shower Trim",             cat:"shower_trim", tier:1,
-    variants:[{finish:"chrome",sku:"TL5182EP"}]},
-  {key:"bodhi_ts",     series:"Bodhi",   name:"Bodhi Tub & Shower Trim",         cat:"tub_shower_trim", tier:2,
-    variants:[{finish:"chrome",sku:"T2643EP"},{finish:"matte_black",sku:"T2643EPBL"}]},
-  {key:"bodhi_sh",     series:"Bodhi",   name:"Bodhi Shower Trim",               cat:"shower_trim", tier:2,
-    variants:[{finish:"chrome",sku:"T2642EP"},{finish:"matte_black",sku:"T2642EPBL"}]},
-  {key:"rizon_ts",     series:"Rizon",   name:"Rizon Tub & Shower Trim",         cat:"tub_shower_trim",
-    variants:[{finish:"chrome",sku:"T2813EP"}]},
-  {key:"rizon_sh",     series:"Rizon",   name:"Rizon Shower Trim",               cat:"shower_trim",
-    variants:[{finish:"chrome",sku:"T2812EP"}]},
-  {key:"iver_ts",      series:"Iver",    name:"Iver Tub & Shower Trim",          cat:"tub_shower_trim",
-    variants:[{finish:"chrome",sku:"T2583EP"}]},
-  {key:"iver_sh",      series:"Iver",    name:"Iver Shower Trim",                cat:"shower_trim",
-    variants:[{finish:"chrome",sku:"T2572EP"}]},
-  {key:"jase_ts",      series:"Jase",    name:"Jase Tub & Shower Trim",          cat:"tub_shower_trim",
-    variants:[{finish:"brushed_gold",sku:"T2413EPBZG"}]},
-  {key:"jase_sh",      series:"Jase",    name:"Jase Shower Trim",                cat:"shower_trim",
-    variants:[{finish:"brushed_gold",sku:"T2412EPBZG"}]},
-
-  // ── Shower kits ──
-  {key:"kit_positemp_2610", series:"Positemp", name:"Positemp Shower Kit",       cat:"shower_kit",
-    variants:[{finish:"chrome",sku:"KITT2610"}], note:"Chrome only"},
-  {key:"kit_positemp_2810", series:"Positemp", name:"Positemp Shower Kit",       cat:"shower_kit",
-    variants:[{finish:"matte_black",sku:"KITT2810BL"},{finish:"brushed_nickel",sku:"KITT2810BN"}],
-    verify:'Deck says KITT2810 is "available in Black & BN" without listing suffixes — confirm the exact SKUs.'},
-  {key:"kit_mcore_9011",    series:"M-Core",   name:"M-Core Shower Kit w/ Volume Control", cat:"shower_kit",
-    variants:[{finish:"matte_black",sku:"KITUTS9011BL"},{finish:"brushed_nickel",sku:"KITUTS9011BN"}],
-    verify:"Deck lists base KITUTS9011 available in Black & BN — confirm suffixes."},
-  {key:"kit_mcore_3290",    series:"M-Core",   name:"M-Core Shower Kit w/ Volume Control", cat:"shower_kit",
-    variants:[{finish:"matte_black",sku:"KITUT3290BL"}],
-    verify:"Deck lists base KITUT3290 available in Black — confirm suffix."},
-
-  // ── Accessories (deck shows chrome SKUs; other finishes exist per the swatches) ──
-  {key:"method_tp",   series:"Method",   name:"Method Toilet Paper Holder", cat:"accessory", variants:[{finish:"chrome",sku:"YB2408CH"}]},
-  {key:"method_tb",   series:"Method",   name:"Method Towel Bar",           cat:"accessory", variants:[{finish:"chrome",sku:"YB2424CH"}]},
-  {key:"method_tr",   series:"Method",   name:"Method Towel Ring",          cat:"accessory", variants:[{finish:"chrome",sku:"YB2486CH"}]},
-  {key:"method_hook", series:"Method",   name:"Method Robe Hook",           cat:"accessory", variants:[{finish:"chrome",sku:"YB2403CH"}]},
-  {key:"genta_tb18",  series:"Genta LX", name:"Genta LX Towel Bar",         cat:"accessory", variants:[{finish:"chrome",sku:"BH3608CH"}]},
-  {key:"genta_tb24",  series:"Genta LX", name:'Genta LX Towel Bar 24"',     cat:"accessory", variants:[{finish:"chrome",sku:"BH3824CH"}]},
-  {key:"genta_tr",    series:"Genta LX", name:"Genta LX Towel Ring",        cat:"accessory", variants:[{finish:"chrome",sku:"BH3885CH"}]},
-  {key:"genta_hook",  series:"Genta LX", name:"Genta LX Robe Hook",         cat:"accessory", variants:[{finish:"chrome",sku:"BH3803CH"}]},
-  {key:"dart_tp",     series:"Dartmoor", name:"Dartmoor Toilet Paper Holder",cat:"accessory",variants:[{finish:"chrome",sku:"YB2108CH"}]},
-  {key:"dart_tb",     series:"Dartmoor", name:"Dartmoor Towel Bar",         cat:"accessory", variants:[{finish:"chrome",sku:"YB2124CH"}]},
-  {key:"dart_tr",     series:"Dartmoor", name:"Dartmoor Towel Ring",        cat:"accessory", variants:[{finish:"chrome",sku:"YB2186CH"}]},
-  {key:"dart_hook",   series:"Dartmoor", name:"Dartmoor Double Robe Hook",  cat:"accessory", variants:[{finish:"chrome",sku:"YB2103CH"}]},
-
-  // ── Water security ──
-  {key:"flo_shutoff", series:"Moen Flo", name:'Flo Smart Water Monitor & Shutoff 3/4"', cat:"water_security",
-    variants:[{finish:"tbd",sku:"900-001"}], note:'Also available in 1" and 1.25"'},
-  {key:"leak_det",    series:"Moen",     name:"Smart Leak Detector",        cat:"water_security",
-    variants:[{finish:"tbd",sku:"920-004"}], note:"Also available in a 3-pack"},
-
-  // ── Bath safety ──
-  {key:"shower_seat", series:"Home Care",name:"Folding Shower Seat",        cat:"safety",
-    variants:[{finish:"tbd",sku:"DN7110"}]},
-  {key:"grabbar_sys", series:"Home Care",name:"Grab Bar Shower System",     cat:"safety",
-    variants:[{finish:"chrome",sku:"T9342BGM15"}]},
-  {key:"grab_bar",    series:"Home Care",name:"Grab Bar",                   cat:"safety",
-    variants:[{finish:"chrome",sku:"TBD"}], verify:"Deck shows grab bars without model numbers — add the SKU and length you stock."},
-];
-const moenByKey=k=>MOEN_CATALOG.find(m=>m.key===k);
-const moenName=k=>moenByKey(k)?.name||k;
-// Which catalog items can be specified on a given cabinet/fixture
-const moenOptionsFor=(c,room)=>{
-  if(!c) return [];
-  const isKitchenSink=c.type==="base"&&notesHas(c,"sink");
-  return MOEN_CATALOG.filter(m=>{
-    const attach=MOEN_CATS[m.cat]?.attach||[];
-    if(!attach.length) return false;
-    if(m.cat==="kitchen_faucet") return isKitchenSink||(c.type==="island"&&notesHas(c,"sink"));
-    return attach.includes(c.type);
-  });
-};
-// Pick the variant closest to the project's chosen finish
-const moenVariantFor=(m,preferred)=>
-  m.variants.find(v=>v.finish===preferred)||m.variants[0];
-// Everything specified across the job, for the order sheet and drawings
-function collectMoen(cabs,room){
-  const items=[];
-  (cabs||[]).forEach(c=>{
-    if(!c.moen?.sku) return;
-    const m=moenByKey(c.moen.key);
-    items.push({label:moenName(c.moen.key),sku:c.moen.sku,finish:c.moen.finish,qty:1,
-      price:c.moen.price||0,cat:m?.cat,forCab:c,verify:m?.verify});
-  });
-  (room?.moenExtras||[]).forEach(e=>{
-    if(!e.sku) return;
-    const m=moenByKey(e.key);
-    items.push({label:moenName(e.key),sku:e.sku,finish:e.finish,qty:e.qty||1,
-      price:e.price||0,cat:m?.cat,verify:m?.verify});
-  });
-  return items;
-}
-const moenTotal=(cabs,room)=>collectMoen(cabs,room).reduce((s,i)=>s+(i.price||0)*(i.qty||1),0);
-
 /* ─── FIXTURE LOCATION ─────────────────────────────────────────────────────
    Existing bathrooms get measured, not designed. Nobody records a toilet as
    "18 inches from the left edge of the bowl" — they record the centre of the
@@ -1990,78 +1837,6 @@ const Section=({num,title,desc,children})=>(
   </div>
 );
 
-/* ─── MOEN EXTRAS CARD (accessories, water security, safety) ──────────────── */
-function MoenExtrasCard({room,setRoom}){
-  const list=room.moenExtras||[];
-  const IS2={...IB,padding:"6px 9px",fontSize:13};
-  const setList=fn=>setRoom(r=>({...r,moenExtras:typeof fn==="function"?fn(r.moenExtras||[]):fn}));
-  const pool=MOEN_CATALOG.filter(m=>["accessory","water_security","safety"].includes(m.cat));
-  const add=key=>{
-    const m=moenByKey(key);if(!m)return;
-    const v=moenVariantFor(m,room.fixtureFinish||"chrome");
-    setList(l=>[...l,{id:utid(),key,finish:v.finish,sku:v.sku,qty:1,price:0}]);
-  };
-  const upd=(id,ch)=>setList(l=>l.map(x=>x.id===id?{...x,...ch}:x));
-  const del=id=>setList(l=>l.filter(x=>x.id!==id));
-  const byCat={};
-  pool.forEach(m=>{(byCat[m.cat]=byCat[m.cat]||[]).push(m);});
-  return(
-    <Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-        <h3 style={{fontSize:16,fontWeight:600,color:T.ink}}>Moen accessories & extras</h3>
-        <select onChange={e=>{if(e.target.value){add(e.target.value);e.target.value="";}}} defaultValue=""
-          style={{...IS2,width:"auto",padding:"6px 12px",fontSize:12,color:T.amber,fontWeight:600,borderColor:T.amber,background:"#fff"}}>
-          <option value="" disabled>+ Add item</option>
-          {Object.keys(byCat).map(cat=>(
-            <optgroup key={cat} label={MOEN_CATS[cat]?.label||cat}>
-              {byCat[cat].map(m=><option key={m.key} value={m.key}>{m.name}</option>)}
-            </optgroup>
-          ))}
-        </select>
-      </div>
-      <p style={{fontSize:12,color:T.faint,marginBottom:12}}>Towel bars, paper holders, grab bars, leak detection. Model numbers print on the order sheet and shop drawings.</p>
-      {list.length===0
-        ?<p style={{fontSize:13,color:T.faint,fontStyle:"italic"}}>Nothing added yet.</p>
-        :<div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {list.map(it=>{
-            const m=moenByKey(it.key);
-            return(
-              <div key={it.id} style={{padding:"10px 12px",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8}}>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 130px 60px 80px auto",gap:8,alignItems:"end"}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:T.ink}}>{m?.name||it.key}</div>
-                    <div style={{fontSize:13,fontFamily:"monospace",color:T.oak,fontWeight:700}}>{it.sku}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Finish</div>
-                    <select value={it.finish} onChange={e=>{
-                        const v=m?.variants.find(x=>x.finish===e.target.value);
-                        upd(it.id,v?{finish:v.finish,sku:v.sku}:{finish:e.target.value});
-                      }} style={{...IS2,width:"100%"}}>
-                      {(m?.variants||[]).map(v=><option key={v.sku} value={v.finish}>{finishLabel(v.finish)}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:T.faint,marginBottom:2}}>Qty</div>
-                    <input type="number" min="1" value={it.qty} onChange={e=>upd(it.id,{qty:parseInt(e.target.value)||1})} style={{...IS2,width:"100%",textAlign:"center"}}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:T.faint,marginBottom:2}}>$ each</div>
-                    <input type="number" value={it.price} onChange={e=>upd(it.id,{price:parseFloat(e.target.value)||0})} style={{...IS2,width:"100%",textAlign:"center"}}/>
-                  </div>
-                  <button onClick={()=>del(it.id)} style={{background:"none",border:"none",color:T.red,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1}}>×</button>
-                </div>
-                {m?.note&&<div style={{fontSize:11,color:T.muted,marginTop:5}}>{m.note}</div>}
-                {m?.verify&&<div style={{fontSize:11,color:T.red,marginTop:5,lineHeight:1.5}}>⚠ {m.verify}</div>}
-              </div>
-            );
-          })}
-        </div>
-      }
-    </Card>
-  );
-}
-
 /* ─── ROOM OPTIONS CARD ───────────────────────────────────────────────────── */
 function RoomOptionsCard({room,setRoom}){
   const IS={...IB,padding:"7px 10px"};
@@ -2555,10 +2330,6 @@ CRITICAL RULES:
 
         <Section num="E" title="Trim & moulding" desc="Crown, light rail, toe kick covers, scribe, fillers, and end panels. Linear footage is auto-calculated from your cabinet layout and priced on the quote.">
           <TrimAccessoriesCard room={room} setRoom={setRoom}/>
-        </Section>
-
-        <Section num="F2" title="Moen fixtures & accessories" desc="Items from the Postma Moen program. Faucets and shower trim attach to a fixture in the Design step; accessories, grab bars and leak detection go here. No prices are published in the spec deck, so enter yours — anything left at zero prints as TBD.">
-          <MoenExtrasCard room={room} setRoom={setRoom}/>
         </Section>
 
         <Section num="F" title={bath?"Hardware & finishes":"Hardware"} desc={bath?"Pulls, hinges and slides, plus the metal finish for the plumbing trim — chrome, brushed nickel, matte black, gold and the rest. The finish shows in the elevation views and prints on every output.":"Pulls, hinges, and drawer slides. Quantities are auto-calculated from door and drawer counts when you build your layout."}>
@@ -3680,58 +3451,6 @@ function PropertiesPanel({c,update,del,activeWalls,cabs,updateBulk,room}){
         </div>
       )}
 
-
-      {/* ── MOEN TRIM SPECIFICATION ── */}
-      {(()=>{
-        const opts=moenOptionsFor(c,room);
-        if(!opts.length) return null;
-        const sel=c.moen?moenByKey(c.moen.key):null;
-        const byCat={};
-        opts.forEach(m=>{(byCat[m.cat]=byCat[m.cat]||[]).push(m);});
-        return(
-          <div style={{marginBottom:14,padding:"12px 14px",background:"#fff",border:`1px solid ${T.border}`,borderRadius:8}}>
-            <Lbl style={{marginBottom:7}}>Moen specification</Lbl>
-            <select value={c.moen?.key||""} onChange={e=>{
-                const k=e.target.value;
-                if(!k){update(c.id,{moen:undefined});return;}
-                const m=moenByKey(k);
-                const v=moenVariantFor(m,c.finishKey||room?.fixtureFinish||"chrome");
-                update(c.id,{moen:{key:k,finish:v.finish,sku:v.sku,price:c.moen?.price||0}});
-              }} style={{...IS,width:"100%"}}>
-              <option value="">— not specified —</option>
-              {Object.keys(byCat).map(cat=>(
-                <optgroup key={cat} label={MOEN_CATS[cat]?.label||cat}>
-                  {byCat[cat].map(m=><option key={m.key} value={m.key}>{m.name}{m.tier?" (Tier "+m.tier+")":""}</option>)}
-                </optgroup>
-              ))}
-            </select>
-            {sel&&(
-              <div style={{marginTop:8}}>
-                <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Finish available for this model</div>
-                <select value={c.moen.finish} onChange={e=>{
-                    const v=sel.variants.find(x=>x.finish===e.target.value);
-                    if(v) update(c.id,{moen:{...c.moen,finish:v.finish,sku:v.sku}});
-                  }} style={{...IS,width:"100%"}}>
-                  {sel.variants.map(v=><option key={v.sku} value={v.finish}>{finishLabel(v.finish)}</option>)}
-                </select>
-                <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Model</div>
-                    <div style={{fontSize:16,fontWeight:700,fontFamily:"monospace",color:T.oak}}>{c.moen.sku}</div>
-                  </div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:11,color:T.faint,marginBottom:3}}>Price each</div>
-                    <input type="number" value={c.moen.price||0} onChange={e=>update(c.id,{moen:{...c.moen,price:parseFloat(e.target.value)||0}})}
-                      style={{...IS,width:"100%",textAlign:"center"}}/>
-                  </div>
-                </div>
-                {sel.note&&<p style={{fontSize:11,color:T.muted,marginTop:6}}>{sel.note}</p>}
-                {sel.verify&&<p style={{fontSize:11,color:T.red,marginTop:6,lineHeight:1.5}}>⚠ {sel.verify}</p>}
-              </div>
-            )}
-          </div>
-        );
-      })()}
       {/* ── EXACT POSITION ── */}
       {!c.corner&&c.wall!=="Island"&&(
         <div style={{marginBottom:14,padding:"12px 14px",background:"#fff",border:`1.5px solid ${T.amber}`,borderRadius:8}}>
@@ -4009,19 +3728,6 @@ function ShopDrawings({cabs,room,project,activeWalls,companyProfile}){
           </>;
         })()}
       </div>
-      {(()=>{
-        const mo=collectMoen(cabs,room);
-        if(!mo.length) return null;
-        return(
-          <div style={{breakInside:"avoid",marginBottom:12}}>
-            <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Moen Fixtures & Trim</div>
-            {mo.map((i,n)=>(
-              <div key={n}>{i.label} — <strong style={{fontFamily:"monospace"}}>{i.sku}</strong> · {finishLabel(i.finish)}{i.qty>1?" × "+i.qty:""}</div>
-            ))}
-            <div style={{fontSize:10,color:"#666",marginTop:3}}>Verify model availability and finish before ordering.</div>
-          </div>
-        );
-      })()}
       <div style={{breakInside:"avoid",marginBottom:12}}>
         <div style={{fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #999",marginBottom:4}}>Appliances & Fixtures</div>
         {appliances.length>0?appliances.map(a=><div key={a.id}>{a.label}: {a.w}"W × {a.h}"H × {a.d}"D{a.wall==="Island"?" (Island)":""}</div>):<div>TBD</div>}
@@ -4558,22 +4264,6 @@ function QuoteView({cabs,setCabs,project,setProject,room,activeWalls}){
               </Card>
             )}
 
-            {/* Moen fixtures & trim — only in itemized mode */}
-            {!usePkg&&collectMoen(cabs,room).length>0&&(
-              <Card style={{marginBottom:16,padding:0,overflow:"hidden"}}>
-                <div style={{padding:"12px 14px",background:T.surfaceAlt,borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:600,color:T.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>Moen fixtures & trim</div>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
-                  <tbody>{collectMoen(cabs,room).map((item,i)=>(
-                    <tr key={i} style={{borderBottom:`1px solid ${T.border}`,background:i%2===0?"#fff":T.surface}}>
-                      <td style={{padding:"11px 14px",fontWeight:500}}>{item.label}<div style={{fontSize:12,color:T.muted}}>{item.sku} · {finishLabel(item.finish)}</div></td>
-                      <td style={{padding:"11px 14px",color:T.muted}}>{item.qty}</td>
-                      <td style={{padding:"11px 14px",fontWeight:600,color:T.oak,textAlign:"right"}}>{item.price>0?"$"+(item.price*item.qty).toLocaleString():"TBD"}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </Card>
-            )}
-
             {/* Countertop table — only in itemized mode */}
             {!usePkg&&ctItems.length>0&&(
               <Card style={{marginBottom:16,padding:0,overflow:"hidden"}}>
@@ -4731,23 +4421,6 @@ function OrderSheet({cabs,project,room,companyProfile,activeWalls}){
                   <td style={{padding:"9px 14px",fontWeight:500}}>{item.label}</td>
                   <td style={{padding:"9px 14px",color:T.muted}}>{item.qty}</td>
                   <td style={{padding:"9px 14px",fontWeight:600,color:T.oak,textAlign:"right"}}>${item.price.toLocaleString()}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </Card>
-        )}
-
-        {/* Moen fixtures & trim */}
-        {collectMoen(cabs,room).length>0&&(
-          <Card style={{marginTop:16,padding:0,overflow:"hidden"}}>
-            <div style={{padding:"10px 14px",background:T.surfaceAlt,borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:600,color:T.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>Moen fixtures & trim</div>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
-              <tbody>{collectMoen(cabs,room).map((item,i)=>(
-                <tr key={i} style={{borderBottom:`1px solid ${T.border}`,background:i%2===0?"#fff":T.surface}}>
-                  <td style={{padding:"9px 14px",fontWeight:500}}>{item.label}<div style={{fontSize:12,color:T.muted}}>{finishLabel(item.finish)}</div></td>
-                  <td style={{padding:"9px 14px",fontFamily:"monospace",fontWeight:700,color:T.oak}}>{item.sku}</td>
-                  <td style={{padding:"9px 14px",color:T.muted}}>{item.qty}</td>
-                  <td style={{padding:"9px 14px",fontWeight:600,color:T.oak,textAlign:"right"}}>{item.price>0?"$"+(item.price*item.qty).toLocaleString():"TBD"}</td>
                 </tr>
               ))}</tbody>
             </table>
